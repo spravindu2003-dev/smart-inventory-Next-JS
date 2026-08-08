@@ -1,0 +1,29 @@
+declare module 'lucide-react' {
+  import { FC, SVGProps } from 'react';
+  export const Package: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const ShoppingCart: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const BarChart3: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Users: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Activity: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const ClipboardList: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Settings: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const LogOut: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const LayoutDashboard: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Plus: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Pencil: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Trash2: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Search: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const X: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Check: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Bell: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Command: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Undo2: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const UserCheck: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const UserX: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const TrendingUp: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const TrendingDown: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const AlertTriangle: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Filter: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Clock: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const DollarSign: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+}

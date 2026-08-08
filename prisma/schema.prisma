@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Business {
+  id           Int           @id @default(autoincrement())
+  name         String
+  ownerId      Int           @unique
+  createdAt    DateTime      @default(now())
+  activities   ActivityLog[]
+  owner        User          @relation("BusinessOwner", fields: [ownerId], references: [id])
+  editRequests EditRequest[]
+  products     Product[]
+  sales        Sale[]
+  users        User[]
+}
+
+model User {
+  id               Int           @id @default(autoincrement())
+  name             String
+  email            String        @unique
+  password         String
+  role             Role          @default(cashier)
+  isActive         Boolean       @default(true)
+  isDeleted        Boolean       @default(false)
+  deletedAt        DateTime?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  businessId       Int?
+  createdById      Int?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  activities       ActivityLog[]
+  ownedBusiness    Business?     @relation("BusinessOwner")
+  editRequests     EditRequest[] @relation("RequestedEdits")
+  reviewedRequests EditRequest[] @relation("ReviewedEdits")
+  sales            Sale[]
+  saleItems        SaleItem[]
+  business         Business?     @relation(fields: [businessId], references: [id])
+  createdBy        User?         @relation("UserCreation", fields: [createdById], references: [id])
+  createdUsers     User[]        @relation("UserCreation")
+}
+
+model Product {
+  id            Int            @id @default(autoincrement())
+  name          String
+  description   String?
+  price         Decimal        @db.Decimal(10, 2)
+  stock         Int            @default(0)
+  sku           String         @unique
+  category      String?
+  expiryDate    DateTime?
+  removalReason RemovalReason?
+  removedAt     DateTime?
+  businessId    Int
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  business      Business       @relation(fields: [businessId], references: [id])
+  saleItems     SaleItem[]
+}
+
+model Sale {
+  id         Int        @id @default(autoincrement())
+  total      Decimal    @db.Decimal(12, 2)
+  userId     Int
+  businessId Int
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  business   Business   @relation(fields: [businessId], references: [id])
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items      SaleItem[]
+}
+
+model SaleItem {
+  id        Int     @id @default(autoincrement())
+  saleId    Int
+  productId Int
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+  subtotal  Decimal @db.Decimal(12, 2)
+  userId    Int
+  product   Product @relation(fields: [productId], references: [id])
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([saleId, productId])
+}
+
+model ActivityLog {
+  id          Int      @id @default(autoincrement())
+  action      String
+  entity      String?
+  entityId    Int?
+  description String?
+  userId      Int
+  businessId  Int
+  createdAt   DateTime @default(now())
+  business    Business @relation(fields: [businessId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EditRequest {
+  id            Int      @id @default(autoincrement())
+  businessId    Int
+  requestedById Int
+  targetType    String
+  targetId      Int
+  actionType    String
+  payload       Json
+  status        String   @default("PENDING")
+  message       String?
+  reviewedById  Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  business      Business @relation(fields: [businessId], references: [id])
+  requestedBy   User     @relation("RequestedEdits", fields: [requestedById], references: [id])
+  reviewedBy    User?    @relation("ReviewedEdits", fields: [reviewedById], references: [id])
+}
+
+enum Role {
+  owner
+  manager
+  cashier
+}
+
+enum RemovalReason {
+  expired
+  damaged
+  low_demand
+}
