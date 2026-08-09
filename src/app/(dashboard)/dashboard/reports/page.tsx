@@ -27,6 +27,7 @@ import {
   ResponsiveContainer,
   Legend,
   type PieLabelRenderProps,
+  type TooltipValueType,
 } from 'recharts';
 
 const COLORS = ['#4f46e5', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#06b6d4'];
@@ -140,7 +141,7 @@ export default function ReportsPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis />
-                <Tooltip formatter={(value: string | number | (string | number)[]) => formatCurrency(Number(value))} />
+                <Tooltip formatter={(value: TooltipValueType | undefined) => formatCurrency(Number(value ?? 0))} />
                 <Line
                   type="monotone"
                   dataKey="revenue"
@@ -212,7 +213,7 @@ export default function ReportsPage() {
                     cy="50%"
                     labelLine={false}
                     label={({ name, percent }: PieLabelRenderProps) =>
-                      `${String(name)} (${(percent * 100).toFixed(0)}%)`
+                      `${String(name)} (${((percent ?? 0) * 100).toFixed(0)}%)`
                     }
                     outerRadius={100}
                     fill="#8884d8"
