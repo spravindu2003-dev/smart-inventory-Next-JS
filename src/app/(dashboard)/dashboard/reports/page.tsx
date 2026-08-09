@@ -26,6 +26,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  type PieLabelRenderProps,
 } from 'recharts';
 
 const COLORS = ['#4f46e5', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#06b6d4'];
@@ -210,8 +211,8 @@ export default function ReportsPage() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }: { name: string; percent: number }) =>
-                      `${name} (${(percent * 100).toFixed(0)}%)`
+                    label={({ name, percent }: PieLabelRenderProps) =>
+                      `${String(name)} (${(percent * 100).toFixed(0)}%)`
                     }
                     outerRadius={100}
                     fill="#8884d8"
