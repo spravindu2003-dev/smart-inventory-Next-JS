@@ -12,8 +12,10 @@ import { getUsers, createUser, updateUser, toggleUserStatus, deleteUser } from '
 import { formatDate } from '@/lib/utils';
 import { Plus, Pencil, UserCheck, UserX, Trash2, Search } from 'lucide-react';
 import { toast } from '@/lib/toast';
+import { useAuthToken } from '@/hooks/use-auth-token';
 
 export default function UsersPage() {
+  const token = useAuthToken();
   const [users, setUsers] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [modalOpen, setModalOpen] = React.useState(false);
@@ -29,7 +31,7 @@ export default function UsersPage() {
 
   async function fetchUsers() {
     try {
-      const data = await getUsers({ search: search || undefined });
+      const data = await getUsers(token, { search: search || undefined });
       if ('error' in data) {
         toast.error(data.error || 'An error occurred');
       } else {
@@ -43,8 +45,10 @@ export default function UsersPage() {
   }
 
   React.useEffect(() => {
-    fetchUsers();
-  }, []);
+    if (token) {
+      fetchUsers();
+    }
+  }, [token]);
 
   function openCreate() {
     setEditing(null);
@@ -71,9 +75,9 @@ export default function UsersPage() {
       let result;
       if (editing) {
         const { password, ...updateData } = form;
-        result = await updateUser(editing.id, updateData);
+        result = await updateUser(token, editing.id, updateData);
       } else {
-        result = await createUser(form);
+        result = await createUser(token, form);
       }
 
       if ('error' in result) {
@@ -93,7 +97,7 @@ export default function UsersPage() {
 
   async function handleToggleStatus(user: any) {
     try {
-      const result = await toggleUserStatus(user.id);
+      const result = await toggleUserStatus(token, user.id);
       if ('error' in result) {
         toast.error(result.error || 'An error occurred');
       } else {
@@ -109,7 +113,7 @@ export default function UsersPage() {
     if (!confirm('Are you sure you want to delete this user?')) return;
 
     try {
-      const result = await deleteUser(user.id);
+      const result = await deleteUser(token, user.id);
       if ('error' in result) {
         toast.error(result.error || 'An error occurred');
       } else {

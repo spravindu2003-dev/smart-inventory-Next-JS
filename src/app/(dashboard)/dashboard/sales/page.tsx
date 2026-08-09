@@ -11,12 +11,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { getSales, createSale, updateSale, undoSale } from '@/actions/sales';
 import { getProducts } from '@/actions/products';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthToken } from '@/hooks/use-auth-token';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Plus, Pencil, Undo2, ShoppingCart, Trash2 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 
 export default function SalesPage() {
   const { user } = useAuth();
+  const token = useAuthToken();
   const currency = user?.currency;
   const isManager = user?.role === 'owner' || user?.role === 'manager';
 
@@ -40,9 +42,9 @@ export default function SalesPage() {
 
   async function fetchSales() {
     try {
-      const data = await getSales();
+      const data = await getSales(token);
       if ('error' in data) {
-        toast.error(data.error || 'An error occurred');
+        toast.error(typeof data.error === 'string' ? data.error : 'An error occurred');
       } else {
         setSales(data.sales);
       }
@@ -63,11 +65,11 @@ export default function SalesPage() {
     setCart([]);
     setCreateOpen(true);
     try {
-      const data = await getProducts();
+      const data = await getProducts(token);
       if ('error' in data) {
-        toast.error(data.error || 'An error occurred');
+        toast.error(typeof data.error === 'string' ? data.error : 'An error occurred');
       } else {
-        setProducts(data.products.filter((p: any) => !p.removedAt && p.stock > 0));
+        setProducts(data.products.filter((p: Record<string, unknown>) => !p.removedAt && (p.stock as number) > 0));
       }
     } catch (error) {
       toast.error('Failed to load products');
@@ -125,7 +127,7 @@ export default function SalesPage() {
     setSaving(true);
     try {
       const items = cart.map((c) => ({ productId: c.productId, quantity: c.quantity }));
-      const result = await createSale({ items });
+      const result = await createSale(token, { items });
       if ('error' in result) {
         toast.error(result.error || 'An error occurred');
       } else {
@@ -157,11 +159,11 @@ export default function SalesPage() {
     setEditProductId('');
     setEditQty(1);
     try {
-      const data = await getProducts();
+      const data = await getProducts(token);
       if ('error' in data) {
-        toast.error(data.error || 'An error occurred');
+        toast.error(typeof data.error === 'string' ? data.error : 'An error occurred');
       } else {
-        setProducts(data.products.filter((p: any) => !p.removedAt));
+        setProducts(data.products.filter((p: Record<string, unknown>) => !p.removedAt));
       }
     } catch (error) {
       toast.error('Failed to load products');
@@ -222,7 +224,7 @@ export default function SalesPage() {
     setEditSaving(true);
     try {
       const items = editCart.map((c) => ({ productId: c.productId, quantity: c.quantity }));
-      const result = await updateSale(editTarget.id, { items });
+      const result = await updateSale(token, editTarget.id, { items });
       if ('error' in result) {
         toast.error(result.error || 'An error occurred');
       } else {
@@ -241,7 +243,7 @@ export default function SalesPage() {
     if (!undoTarget) return;
     setUndoing(true);
     try {
-      const result = await undoSale(undoTarget.id);
+      const result = await undoSale(token, undoTarget.id);
       if ('error' in result) {
         toast.error(result.error || 'An error occurred');
       } else {

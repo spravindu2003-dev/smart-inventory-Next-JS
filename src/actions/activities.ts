@@ -1,10 +1,9 @@
 'use server';
 
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
-import { revalidatePath } from 'next/cache';
 
-export async function getActivities(params?: {
+export async function getActivities(token: string, params?: {
   page?: number;
   limit?: number;
   action?: string;
@@ -13,13 +12,9 @@ export async function getActivities(params?: {
   endDate?: string;
   search?: string;
 }) {
-  const session = await auth();
+  const session = await getAuthSession(token);
 
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (session.user.role !== 'owner' && session.user.role !== 'manager') {
+  if (session.role !== 'owner' && session.role !== 'manager') {
     return { error: 'Unauthorized' };
   }
 
@@ -27,8 +22,8 @@ export async function getActivities(params?: {
   const limit = params?.limit || 50;
   const skip = (page - 1) * limit;
 
-  const where: any = {
-    businessId: Number(session.user.businessId) || 0,
+  const where: Record<string, unknown> = {
+    businessId: Number(session.businessId) || 0,
   };
 
   if (params?.action) {
@@ -42,10 +37,10 @@ export async function getActivities(params?: {
   if (params?.startDate || params?.endDate) {
     where.createdAt = {};
     if (params.startDate) {
-      where.createdAt.gte = new Date(params.startDate);
+      (where.createdAt as Record<string, unknown>).gte = new Date(params.startDate);
     }
     if (params.endDate) {
-      where.createdAt.lte = new Date(params.endDate);
+      (where.createdAt as Record<string, unknown>).lte = new Date(params.endDate);
     }
   }
 
@@ -82,14 +77,10 @@ export async function getActivities(params?: {
   };
 }
 
-export async function getActivitySummary() {
-  const session = await auth();
+export async function getActivitySummary(token: string) {
+  const session = await getAuthSession(token);
 
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (session.user.role !== 'owner' && session.user.role !== 'manager') {
+  if (session.role !== 'owner' && session.role !== 'manager') {
     return { error: 'Unauthorized' };
   }
 
@@ -99,14 +90,14 @@ export async function getActivitySummary() {
   const [totalToday, actionCounts] = await Promise.all([
     prisma.activityLog.count({
       where: {
-        businessId: Number(session.user.businessId) || 0,
+        businessId: Number(session.businessId) || 0,
         createdAt: { gte: today },
       },
     }),
     prisma.activityLog.groupBy({
       by: ['action'],
       where: {
-        businessId: Number(session.user.businessId) || 0,
+        businessId: Number(session.businessId) || 0,
         createdAt: { gte: today },
       },
       _count: {

@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthToken } from '@/hooks/use-auth-token';
 import { getCurrency, updateCurrency } from '@/actions/settings';
 import { CURRENCIES, DEFAULT_CURRENCY, getCurrencyByCode } from '@/lib/currencies';
 import { formatCurrency } from '@/lib/utils';
@@ -13,6 +14,7 @@ import { DollarSign, RefreshCw, AlertCircle } from 'lucide-react';
 
 export function CurrencySettings() {
   const { user } = useAuth();
+  const token = useAuthToken();
   const canEdit = user?.role === 'owner' || user?.role === 'manager';
 
   const [currentCurrency, setCurrentCurrency] = React.useState(DEFAULT_CURRENCY);
@@ -30,7 +32,7 @@ export function CurrencySettings() {
   React.useEffect(() => {
     async function loadCurrency() {
       try {
-        const data = await getCurrency();
+        const data = await getCurrency(token);
         setCurrentCurrency(data.currency);
         setSelectedCurrency(data.currency);
       } catch {
@@ -74,7 +76,7 @@ export function CurrencySettings() {
     if (selectedCurrency === currentCurrency) return;
     setSaving(true);
     try {
-      const result = await updateCurrency(selectedCurrency);
+      const result = await updateCurrency(token, selectedCurrency);
       if ('error' in result) {
         toast.error(result.error || 'Failed to update currency');
       } else {

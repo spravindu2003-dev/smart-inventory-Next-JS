@@ -1,13 +1,12 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
+import { useTabSession } from '@/components/tab-session-provider';
 
 export function useAuth() {
-  const { data: session, status } = useSession();
-
+  const { user, isLoading, isAuthenticated } = useTabSession();
   return {
-    user: session?.user,
-    isLoading: status === 'loading',
-    isAuthenticated: status === 'authenticated',
+    user,
+    isLoading,
+    isAuthenticated,
   };
 }

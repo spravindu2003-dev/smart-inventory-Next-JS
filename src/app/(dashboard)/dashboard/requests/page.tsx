@@ -2,14 +2,16 @@
 
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getRequests, approveRequest, rejectRequest } from '@/actions/requests';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthToken } from '@/hooks/use-auth-token';
+import { usePusherChannel } from '@/hooks/use-pusher-channel';
 import { formatDateTime } from '@/lib/utils';
-import { Check, X, Clock } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { toast } from '@/lib/toast';
 
 const statusColors: Record<string, string> = {
@@ -18,44 +20,65 @@ const statusColors: Record<string, string> = {
   REJECTED: 'bg-red-100 text-red-800',
 };
 
+interface RequestItem {
+  id: number;
+  status: string;
+  actionType: string;
+  targetType: string;
+  targetId: number;
+  message: string | null;
+  createdAt: string;
+  requestedBy: { id: number; name: string; email: string };
+}
+
 export default function RequestsPage() {
   const { user } = useAuth();
+  const token = useAuthToken();
   const canManage = user?.role === 'owner' || user?.role === 'manager';
 
-  const [requests, setRequests] = React.useState<any[]>([]);
+  const [requests, setRequests] = React.useState<RequestItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [processingId, setProcessingId] = React.useState<number | null>(null);
 
-  async function fetchRequests() {
+  const fetchRequests = React.useCallback(async () => {
     try {
-      const data = await getRequests();
+      const data = await getRequests(token);
       if ('error' in data) {
-        toast.error(data.error || 'An error occurred');
+        toast.error(typeof data.error === 'string' ? data.error : 'An error occurred');
       } else {
-        setRequests(data.requests);
+        setRequests(data.requests as unknown as RequestItem[]);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to load requests');
     } finally {
       setLoading(false);
     }
-  }
+  }, [token]);
 
   React.useEffect(() => {
     fetchRequests();
-  }, []);
+  }, [fetchRequests]);
+
+  const handlePusherEvent = React.useCallback(() => {
+    fetchRequests();
+  }, [fetchRequests]);
+
+  const channelName = user?.businessId ? `business-${user.businessId}` : '';
+  usePusherChannel(channelName, 'request-created', handlePusherEvent);
+  usePusherChannel(channelName, 'request-approved', handlePusherEvent);
+  usePusherChannel(channelName, 'request-rejected', handlePusherEvent);
 
   async function handleApprove(id: number) {
     setProcessingId(id);
     try {
-      const result = await approveRequest(id);
+      const result = await approveRequest(token, id);
       if ('error' in result) {
-        toast.error(result.error || 'An error occurred');
+        toast.error(typeof result.error === 'string' ? result.error : 'An error occurred');
       } else {
         toast.success('Request approved');
         fetchRequests();
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to approve request');
     } finally {
       setProcessingId(null);
@@ -65,14 +88,14 @@ export default function RequestsPage() {
   async function handleReject(id: number) {
     setProcessingId(id);
     try {
-      const result = await rejectRequest(id);
+      const result = await rejectRequest(token, id);
       if ('error' in result) {
-        toast.error(result.error || 'An error occurred');
+        toast.error(typeof result.error === 'string' ? result.error : 'An error occurred');
       } else {
         toast.success('Request rejected');
         fetchRequests();
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to reject request');
     } finally {
       setProcessingId(null);

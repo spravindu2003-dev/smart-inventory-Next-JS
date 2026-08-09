@@ -13,6 +13,7 @@ import {
 } from '@/actions/insights';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthToken } from '@/hooks/use-auth-token';
 import {
   LineChart,
   Line,
@@ -35,6 +36,7 @@ const COLORS = ['#4f46e5', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#06b6d4'
 
 export default function ReportsPage() {
   const { user } = useAuth();
+  const token = useAuthToken();
   const currency = user?.currency;
   const [salesTrend, setSalesTrend] = React.useState<any[]>([]);
   const [revenueTrend, setRevenueTrend] = React.useState<any[]>([]);
@@ -49,12 +51,12 @@ export default function ReportsPage() {
       try {
         const [salesTrendData, revenueTrendData, topProductsData, stockDistData, categoryDistData, quickInsightsData] =
           await Promise.all([
-            getSalesTrend(30),
-            getRevenueTrend(30),
-            getTopProducts(10),
-            getStockDistribution(),
-            getCategoryDistribution(),
-            getQuickInsights(),
+            getSalesTrend(token, 30),
+            getRevenueTrend(token, 30),
+            getTopProducts(token, 10),
+            getStockDistribution(token),
+            getCategoryDistribution(token),
+            getQuickInsights(token),
           ]);
 
         if ('trend' in salesTrendData && salesTrendData.trend) setSalesTrend(salesTrendData.trend);
@@ -71,7 +73,7 @@ export default function ReportsPage() {
     }
 
     loadReports();
-  }, []);
+  }, [token]);
 
   if (loading) {
     return (

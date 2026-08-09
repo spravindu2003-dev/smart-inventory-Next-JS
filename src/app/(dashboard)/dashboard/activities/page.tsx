@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getActivities } from '@/actions/activities';
+import { useAuthToken } from '@/hooks/use-auth-token';
 import { formatDateTime } from '@/lib/utils';
 import { Search, Filter } from 'lucide-react';
 
@@ -27,6 +28,7 @@ const actionColors: Record<string, string> = {
 };
 
 export default function ActivitiesPage() {
+  const token = useAuthToken();
   const [activities, setActivities] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState('');
@@ -36,7 +38,7 @@ export default function ActivitiesPage() {
 
   async function fetchActivities() {
     try {
-      const data = await getActivities({
+      const data = await getActivities(token, {
         page,
         limit: 20,
         search: search || undefined,

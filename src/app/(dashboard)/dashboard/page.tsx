@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { getDashboardSummary } from '@/actions/insights';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthToken } from '@/hooks/use-auth-token';
 import { Package, ShoppingCart, DollarSign, TrendingUp } from 'lucide-react';
 import {
   LineChart,
@@ -20,6 +21,7 @@ import {
 
 export default function DashboardPage() {
   const { user } = useAuth();
+  const token = useAuthToken();
   const currency = user?.currency;
   const [summary, setSummary] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
@@ -27,7 +29,7 @@ export default function DashboardPage() {
   React.useEffect(() => {
     async function loadSummary() {
       try {
-        const data = await getDashboardSummary();
+        const data = await getDashboardSummary(token);
         if ('error' in data) {
           console.error(data.error);
         } else {

@@ -3,18 +3,26 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/lib/toast';
+import { loginUser } from '@/actions/login-user';
+import { useTabSession } from '@/components/tab-session-provider';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login, isAuthenticated } = useTabSession();
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
+
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/dashboard');
+    }
+  }, [isAuthenticated, router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,26 +30,17 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const result = await signIn('credentials', {
-        email,
-        password,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        setError('Invalid email or password');
-        toast.error('Invalid email or password');
-      } else {
-        toast.success('Login successful');
-        router.push('/dashboard');
-      }
-    } catch (err) {
-      setError('An error occurred');
-      toast.error('An error occurred');
-    } finally {
+      const token = await loginUser(email, password);
+      await login(token);
+      toast.success('Login successful');
+    } catch {
+      setError('Invalid email or password');
+      toast.error('Invalid email or password');
       setLoading(false);
     }
   }
+
+  if (isAuthenticated) return null;
 
   return (
     <Card>

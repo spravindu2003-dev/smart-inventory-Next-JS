@@ -19,6 +19,8 @@
     "lucide-react": "^1.30.0",
     "next": "16.3.0",
     "next-auth": "^4.24.15",
+    "pusher": "^5.3.4",
+    "pusher-js": "^8.6.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "^3.10.1",

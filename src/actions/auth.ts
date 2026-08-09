@@ -1,56 +1,10 @@
 'use server';
 
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-import { loginSchema, registerSchema, changePasswordSchema } from '@/lib/validations';
+import { registerSchema, changePasswordSchema } from '@/lib/validations';
 import { revalidatePath } from 'next/cache';
-
-export async function login(data: { email: string; password: string }) {
-  const validatedFields = loginSchema.safeParse(data);
-
-  if (!validatedFields.success) {
-    return { error: 'Invalid fields' };
-  }
-
-  const { email, password } = validatedFields.data;
-
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
-
-  if (!user || !user.isActive || user.isDeleted) {
-    return { error: 'Invalid credentials' };
-  }
-
-  const passwordMatch = await bcrypt.compare(password, user.password);
-
-  if (!passwordMatch) {
-    return { error: 'Invalid credentials' };
-  }
-
-  await prisma.activityLog.create({
-    data: {
-      action: 'LOGIN_SUCCESS',
-      entity: 'User',
-      entityId: user.id,
-      description: `User ${user.name} logged in`,
-      userId: user.id,
-      businessId: user.businessId || 0,
-    },
-  });
-
-  return {
-    success: 'Login successful',
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      businessId: user.businessId,
-    },
-  };
-}
 
 export async function register(data: { name: string; email: string; password: string }) {
   const validatedFields = registerSchema.safeParse(data);
@@ -119,35 +73,8 @@ export async function register(data: { name: string; email: string; password: st
   };
 }
 
-export async function getCurrentUser() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return null;
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: Number(session.user.id) },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      isActive: true,
-      businessId: true,
-      createdAt: true,
-    },
-  });
-
-  return user;
-}
-
-export async function changePassword(data: { currentPassword: string; newPassword: string }) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function changePassword(token: string, data: { currentPassword: string; newPassword: string }) {
+  const session = await getAuthSession(token);
 
   const validatedFields = changePasswordSchema.safeParse(data);
 
@@ -158,7 +85,7 @@ export async function changePassword(data: { currentPassword: string; newPasswor
   const { currentPassword, newPassword } = validatedFields.data;
 
   const user = await prisma.user.findUnique({
-    where: { id: Number(session.user.id) },
+    where: { id: Number(session.id) },
   });
 
   if (!user) {
@@ -192,15 +119,11 @@ export async function changePassword(data: { currentPassword: string; newPasswor
   return { success: 'Password changed successfully' };
 }
 
-export async function updateProfile(data: { name: string; email: string }) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function updateProfile(token: string, data: { name: string; email: string }) {
+  const session = await getAuthSession(token);
 
   const user = await prisma.user.findUnique({
-    where: { id: Number(session.user.id) },
+    where: { id: Number(session.id) },
   });
 
   if (!user) {

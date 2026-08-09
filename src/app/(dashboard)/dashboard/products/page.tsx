@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getProducts, createProduct, updateProduct, deleteProduct, removeProduct } from '@/actions/products';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthToken } from '@/hooks/use-auth-token';
 import { formatCurrency } from '@/lib/utils';
 import { Plus, Pencil, Trash2, Package, Search } from 'lucide-react';
 import { toast } from '@/lib/toast';
@@ -33,6 +34,7 @@ const removalOptions = [
 
 export default function ProductsPage() {
   const { user } = useAuth();
+  const token = useAuthToken();
   const currency = user?.currency;
   const isManager = user?.role === 'owner' || user?.role === 'manager';
 
@@ -50,9 +52,9 @@ export default function ProductsPage() {
 
   async function fetchProducts() {
     try {
-      const data = await getProducts({ filter });
+      const data = await getProducts(token, { filter });
       if ('error' in data) {
-        toast.error(data.error || 'An error occurred');
+        toast.error(typeof data.error === 'string' ? data.error : 'An error occurred');
       } else {
         setProducts(data.products);
       }
@@ -101,9 +103,9 @@ export default function ProductsPage() {
 
       let result;
       if (editing) {
-        result = await updateProduct(editing.id, payload);
+        result = await updateProduct(token, editing.id, payload);
       } else {
-        result = await createProduct(payload);
+        result = await createProduct(token, payload);
       }
 
       if ('error' in result) {
@@ -129,9 +131,9 @@ export default function ProductsPage() {
     try {
       let result;
       if (removalReason) {
-        result = await removeProduct(deleteTarget.id, removalReason);
+        result = await removeProduct(token, deleteTarget.id, removalReason);
       } else {
-        result = await deleteProduct(deleteTarget.id);
+        result = await deleteProduct(token, deleteTarget.id);
       }
 
       if ('error' in result) {

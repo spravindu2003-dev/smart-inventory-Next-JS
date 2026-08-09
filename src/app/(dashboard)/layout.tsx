@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useTabSession } from '@/components/tab-session-provider';
 import { Sidebar } from '@/components/dashboard/sidebar';
 import { Topbar } from '@/components/dashboard/topbar';
 import { BottomNav } from '@/components/dashboard/bottom-nav';
@@ -16,7 +16,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { user, isLoading, isAuthenticated } = useTabSession();
   const isDesktop = useMediaQuery('(min-width: 769px)');
   const [cmdOpen, setCmdOpen] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -41,10 +41,10 @@ export default function DashboardLayout({
   const closeMobile = React.useCallback(() => setMobileOpen(false), []);
 
   React.useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (!isLoading && !isAuthenticated) {
       router.push('/login');
     }
-  }, [status, router]);
+  }, [isLoading, isAuthenticated, router]);
 
   React.useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -57,7 +57,7 @@ export default function DashboardLayout({
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  if (status === 'loading') {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#2563EB]"></div>
@@ -65,14 +65,14 @@ export default function DashboardLayout({
     );
   }
 
-  if (!session) {
+  if (!isAuthenticated || !user) {
     return null;
   }
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
       <Sidebar
-        userRole={session.user.role}
+        userRole={user.role}
         collapsed={collapsed}
         onToggle={toggleCollapsed}
         mobileOpen={mobileOpen}
@@ -87,7 +87,7 @@ export default function DashboardLayout({
           {children}
         </main>
 
-        {!isDesktop && <BottomNav userRole={session.user.role} />}
+        {!isDesktop && <BottomNav userRole={user.role} />}
       </div>
     </div>
   );

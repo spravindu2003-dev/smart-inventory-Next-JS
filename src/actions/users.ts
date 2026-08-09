@@ -1,19 +1,15 @@
 'use server';
 
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
 import { userSchema, updateUserSchema } from '@/lib/validations';
 import bcrypt from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
 
-export async function getUsers(params?: { page?: number; limit?: number; search?: string }) {
-  const session = await auth();
+export async function getUsers(token: string, params?: { page?: number; limit?: number; search?: string }) {
+  const session = await getAuthSession(token);
 
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (session.user.role !== 'owner') {
+  if (session.role !== 'owner') {
     return { error: 'Only owners can manage users' };
   }
 
@@ -21,8 +17,8 @@ export async function getUsers(params?: { page?: number; limit?: number; search?
   const limit = params?.limit || 50;
   const skip = (page - 1) * limit;
 
-  const where: any = {
-    businessId: Number(session.user.businessId) || 0,
+  const where: Record<string, unknown> = {
+    businessId: Number(session.businessId) || 0,
     isDeleted: false,
   };
 
@@ -62,19 +58,18 @@ export async function getUsers(params?: { page?: number; limit?: number; search?
   };
 }
 
-export async function createUser(data: {
-  name: string;
-  email: string;
-  password: string;
-  role: 'manager' | 'cashier';
-}) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
+export async function createUser(
+  token: string,
+  data: {
+    name: string;
+    email: string;
+    password: string;
+    role: 'manager' | 'cashier';
   }
+) {
+  const session = await getAuthSession(token);
 
-  if (session.user.role !== 'owner') {
+  if (session.role !== 'owner') {
     return { error: 'Only owners can create users' };
   }
 
@@ -102,8 +97,8 @@ export async function createUser(data: {
       email,
       password: hashedPassword,
       role,
-      businessId: Number(session.user.businessId) || 0,
-      createdById: Number(session.user.id),
+      businessId: Number(session.businessId) || 0,
+      createdById: Number(session.id),
     },
   });
 
@@ -113,8 +108,8 @@ export async function createUser(data: {
       entity: 'User',
       entityId: user.id,
       description: `Created user ${user.name} (${user.role})`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -133,16 +128,13 @@ export async function createUser(data: {
 }
 
 export async function updateUser(
+  token: string,
   id: number,
   data: { name?: string; email?: string; role?: 'manager' | 'cashier' }
 ) {
-  const session = await auth();
+  const session = await getAuthSession(token);
 
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (session.user.role !== 'owner') {
+  if (session.role !== 'owner') {
     return { error: 'Only owners can update users' };
   }
 
@@ -187,8 +179,8 @@ export async function updateUser(
       entity: 'User',
       entityId: user.id,
       description: `Updated user ${user.name}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -206,14 +198,10 @@ export async function updateUser(
   };
 }
 
-export async function toggleUserStatus(id: number) {
-  const session = await auth();
+export async function toggleUserStatus(token: string, id: number) {
+  const session = await getAuthSession(token);
 
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (session.user.role !== 'owner') {
+  if (session.role !== 'owner') {
     return { error: 'Only owners can manage user status' };
   }
 
@@ -229,7 +217,7 @@ export async function toggleUserStatus(id: number) {
     return { error: 'Cannot deactivate owner account' };
   }
 
-  if (existingUser.id === Number(session.user.id)) {
+  if (existingUser.id === Number(session.id)) {
     return { error: 'Cannot deactivate your own account' };
   }
 
@@ -244,8 +232,8 @@ export async function toggleUserStatus(id: number) {
       entity: 'User',
       entityId: user.id,
       description: `${user.isActive ? 'Activated' : 'Deactivated'} user ${user.name}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -263,14 +251,10 @@ export async function toggleUserStatus(id: number) {
   };
 }
 
-export async function deleteUser(id: number) {
-  const session = await auth();
+export async function deleteUser(token: string, id: number) {
+  const session = await getAuthSession(token);
 
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (session.user.role !== 'owner') {
+  if (session.role !== 'owner') {
     return { error: 'Only owners can delete users' };
   }
 
@@ -286,7 +270,7 @@ export async function deleteUser(id: number) {
     return { error: 'Cannot delete owner account' };
   }
 
-  if (existingUser.id === Number(session.user.id)) {
+  if (existingUser.id === Number(session.id)) {
     return { error: 'Cannot delete your own account' };
   }
 
@@ -305,8 +289,8 @@ export async function deleteUser(id: number) {
       entity: 'User',
       entityId: id,
       description: `Deleted user ${existingUser.name}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 

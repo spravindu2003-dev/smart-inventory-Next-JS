@@ -1,24 +1,20 @@
 'use server';
 
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
 import { createSaleSchema, updateSaleSchema } from '@/lib/validations';
 import { revalidatePath } from 'next/cache';
 import { serialize } from '@/lib/serialize';
 
-export async function getSales(params?: { page?: number; limit?: number }) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function getSales(token: string, params?: { page?: number; limit?: number }) {
+  const session = await getAuthSession(token);
 
   const page = params?.page || 1;
   const limit = params?.limit || 50;
   const skip = (page - 1) * limit;
 
   const where = {
-    businessId: Number(session.user.businessId) || 0,
+    businessId: Number(session.businessId) || 0,
   };
 
   const [sales, total] = await Promise.all([
@@ -54,12 +50,8 @@ export async function getSales(params?: { page?: number; limit?: number }) {
   };
 }
 
-export async function getSale(id: number) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function getSale(token: string, id: number) {
+  const session = await getAuthSession(token);
 
   const sale = await prisma.sale.findUnique({
     where: { id },
@@ -84,12 +76,8 @@ export async function getSale(id: number) {
   return { sale: serialize(sale) };
 }
 
-export async function createSale(data: { items: { productId: number; quantity: number }[] }) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function createSale(token: string, data: { items: { productId: number; quantity: number }[] }) {
+  const session = await getAuthSession(token);
 
   const validatedFields = createSaleSchema.safeParse(data);
 
@@ -104,7 +92,7 @@ export async function createSale(data: { items: { productId: number; quantity: n
   const products = await prisma.product.findMany({
     where: {
       id: { in: productIds },
-      businessId: Number(session.user.businessId) || 0,
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -139,15 +127,15 @@ export async function createSale(data: { items: { productId: number; quantity: n
         quantity: item.quantity,
         unitPrice,
         subtotal,
-        userId: Number(session.user.id),
+        userId: Number(session.id),
       };
     });
 
     const createdSale = await tx.sale.create({
       data: {
         total,
-        userId: Number(session.user.id),
-        businessId: Number(session.user.businessId) || 0,
+        userId: Number(session.id),
+        businessId: Number(session.businessId) || 0,
         items: {
           create: saleItems,
         },
@@ -177,8 +165,8 @@ export async function createSale(data: { items: { productId: number; quantity: n
       entity: 'Sale',
       entityId: sale.id,
       description: `Created sale #${sale.id} with ${items.length} items`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -189,12 +177,8 @@ export async function createSale(data: { items: { productId: number; quantity: n
   return { success: 'Sale created', sale: serialize(sale) };
 }
 
-export async function updateSale(id: number, data: { items: { productId: number; quantity: number }[] }) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function updateSale(token: string, id: number, data: { items: { productId: number; quantity: number }[] }) {
+  const session = await getAuthSession(token);
 
   const validatedFields = updateSaleSchema.safeParse(data);
 
@@ -218,7 +202,7 @@ export async function updateSale(id: number, data: { items: { productId: number;
   const products = await prisma.product.findMany({
     where: {
       id: { in: productIds },
-      businessId: Number(session.user.businessId) || 0,
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -269,7 +253,7 @@ export async function updateSale(id: number, data: { items: { productId: number;
         quantity: item.quantity,
         unitPrice,
         subtotal,
-        userId: Number(session.user.id),
+        userId: Number(session.id),
       };
     });
 
@@ -310,8 +294,8 @@ export async function updateSale(id: number, data: { items: { productId: number;
       entity: 'Sale',
       entityId: id,
       description: `Updated sale #${id}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -322,12 +306,8 @@ export async function updateSale(id: number, data: { items: { productId: number;
   return { success: 'Sale updated', sale: serialize(sale) };
 }
 
-export async function undoSale(id: number) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function undoSale(token: string, id: number) {
+  const session = await getAuthSession(token);
 
   const existingSale = await prisma.sale.findUnique({
     where: { id },
@@ -365,8 +345,8 @@ export async function undoSale(id: number) {
       entity: 'Sale',
       entityId: id,
       description: `Undone sale #${id}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 

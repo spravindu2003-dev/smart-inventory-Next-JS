@@ -1,30 +1,26 @@
 'use server';
 
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
 import { productSchema, updateProductSchema } from '@/lib/validations';
 import { revalidatePath } from 'next/cache';
 import { serialize } from '@/lib/serialize';
 
-export async function getProducts(params?: { page?: number; limit?: number; filter?: string }) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function getProducts(token: string, params?: { page?: number; limit?: number; filter?: string }) {
+  const session = await getAuthSession(token);
 
   const page = params?.page || 1;
   const limit = params?.limit || 50;
   const skip = (page - 1) * limit;
 
-  const where: any = {
-    businessId: Number(session.user.businessId) || 0,
+  const where: Record<string, unknown> = {
+    businessId: Number(session.businessId) || 0,
   };
 
   if (params?.filter === 'active') {
-    where.removedAt = null;
+    (where as Record<string, unknown>).removedAt = null;
   } else if (params?.filter === 'removed') {
-    where.removedAt = { not: null };
+    (where as Record<string, unknown>).removedAt = { not: null };
   }
 
   const [products, total] = await Promise.all([
@@ -48,12 +44,8 @@ export async function getProducts(params?: { page?: number; limit?: number; filt
   };
 }
 
-export async function getProduct(id: number) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function getProduct(token: string, id: number) {
+  const session = await getAuthSession(token);
 
   const product = await prisma.product.findUnique({
     where: { id },
@@ -66,23 +58,22 @@ export async function getProduct(id: number) {
   return { product: serialize(product) };
 }
 
-export async function createProduct(data: {
-  name: string;
-  sku: string;
-  price: number;
-  stock: number;
-  category?: string;
-  description?: string;
-  expiryDate?: string | null;
-}) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
+export async function createProduct(
+  token: string,
+  data: {
+    name: string;
+    sku: string;
+    price: number;
+    stock: number;
+    category?: string;
+    description?: string;
+    expiryDate?: string | null;
   }
+) {
+  const session = await getAuthSession(token);
 
-  if (session.user.role === 'cashier') {
-    return { error: 'Cashiers cannot create products directly' };
+  if (session.role === 'cashier') {
+    return { error: 'Cashiers cannot create products directly. Please submit a request.' };
   }
 
   const validatedFields = productSchema.safeParse(data);
@@ -110,7 +101,7 @@ export async function createProduct(data: {
       category,
       description,
       expiryDate: expiryDate ? new Date(expiryDate) : null,
-      businessId: Number(session.user.businessId) || 0,
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -120,8 +111,8 @@ export async function createProduct(data: {
       entity: 'Product',
       entityId: product.id,
       description: `Created product ${product.name}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -131,6 +122,7 @@ export async function createProduct(data: {
 }
 
 export async function updateProduct(
+  token: string,
   id: number,
   data: {
     name?: string;
@@ -142,11 +134,7 @@ export async function updateProduct(
     expiryDate?: string | null;
   }
 ) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+  const session = await getAuthSession(token);
 
   const existingProduct = await prisma.product.findUnique({
     where: { id },
@@ -156,11 +144,49 @@ export async function updateProduct(
     return { error: 'Product not found' };
   }
 
-  if (session.user.role === 'cashier') {
-    return {
-      success: 'Edit request sent to manager',
-      request: true,
-    };
+  if (session.role === 'cashier') {
+    const payload: Record<string, unknown> = {};
+    if (data.name !== undefined) payload.name = data.name;
+    if (data.sku !== undefined) payload.sku = data.sku;
+    if (data.price !== undefined) payload.price = data.price;
+    if (data.stock !== undefined) payload.stock = data.stock;
+    if (data.category !== undefined) payload.category = data.category;
+    if (data.description !== undefined) payload.description = data.description;
+    if (data.expiryDate !== undefined) payload.expiryDate = data.expiryDate;
+
+    if (Object.keys(payload).length === 0) {
+      return { error: 'No changes to request' };
+    }
+
+    const request = await prisma.editRequest.create({
+      data: {
+        targetType: 'product',
+        targetId: id,
+        actionType: 'UPDATE_PRODUCT',
+        payload: payload as never,
+        message: `Requested changes: ${Object.keys(payload).join(', ')}`,
+        businessId: Number(session.businessId) || 0,
+        requestedById: Number(session.id),
+      },
+      include: {
+        requestedBy: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        action: 'CREATE_REQUEST',
+        entity: 'EditRequest',
+        entityId: request.id,
+        description: `Created update request for product #${id}`,
+        userId: Number(session.id),
+        businessId: Number(session.businessId) || 0,
+      },
+    });
+
+    revalidatePath('/dashboard/requests');
+
+    return { success: 'Edit request submitted for manager approval', request: true };
   }
 
   const validatedFields = updateProductSchema.safeParse(data);
@@ -170,10 +196,6 @@ export async function updateProduct(
   }
 
   const updateData = validatedFields.data;
-
-  if (updateData.expiryDate !== undefined) {
-    updateData.expiryDate = updateData.expiryDate ? new Date(updateData.expiryDate as any) as any : null;
-  }
 
   const product = await prisma.product.update({
     where: { id },
@@ -186,8 +208,8 @@ export async function updateProduct(
       entity: 'Product',
       entityId: product.id,
       description: `Updated product ${product.name}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -196,14 +218,10 @@ export async function updateProduct(
   return { success: 'Product updated', product: serialize(product) };
 }
 
-export async function deleteProduct(id: number) {
-  const session = await auth();
+export async function deleteProduct(token: string, id: number) {
+  const session = await getAuthSession(token);
 
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (session.user.role !== 'owner' && session.user.role !== 'manager') {
+  if (session.role !== 'owner' && session.role !== 'manager') {
     return { error: 'Unauthorized' };
   }
 
@@ -225,8 +243,8 @@ export async function deleteProduct(id: number) {
       entity: 'Product',
       entityId: id,
       description: `Deleted product ${product.name}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
@@ -235,12 +253,8 @@ export async function deleteProduct(id: number) {
   return { success: 'Product deleted' };
 }
 
-export async function removeProduct(id: number, reason?: string) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function removeProduct(token: string, id: number, reason?: string) {
+  const session = await getAuthSession(token);
 
   const product = await prisma.product.findUnique({
     where: { id },
@@ -250,17 +264,42 @@ export async function removeProduct(id: number, reason?: string) {
     return { error: 'Product not found' };
   }
 
-  if (session.user.role === 'cashier') {
-    return {
-      success: 'Removal request sent to manager',
-      request: true,
-    };
+  if (session.role === 'cashier') {
+    const request = await prisma.editRequest.create({
+      data: {
+        targetType: 'product',
+        targetId: id,
+        actionType: 'REMOVE_PRODUCT',
+        payload: { reason: reason || null },
+        message: `Requested product removal${reason ? `: ${reason}` : ''}`,
+        businessId: Number(session.businessId) || 0,
+        requestedById: Number(session.id),
+      },
+      include: {
+        requestedBy: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        action: 'CREATE_REQUEST',
+        entity: 'EditRequest',
+        entityId: request.id,
+        description: `Created removal request for product #${id}`,
+        userId: Number(session.id),
+        businessId: Number(session.businessId) || 0,
+      },
+    });
+
+    revalidatePath('/dashboard/requests');
+
+    return { success: 'Removal request submitted for manager approval', request: true };
   }
 
   const removedProduct = await prisma.product.update({
     where: { id },
     data: {
-      removalReason: reason as any || null,
+      removalReason: (reason as 'expired' | 'damaged' | 'low_demand' | null) || null,
       removedAt: new Date(),
     },
   });
@@ -271,8 +310,8 @@ export async function removeProduct(id: number, reason?: string) {
       entity: 'Product',
       entityId: id,
       description: `Removed product ${product.name} (Reason: ${reason || 'N/A'})`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 

@@ -1,13 +1,13 @@
 'use client';
 
-import { SessionProvider } from 'next-auth/react';
+import { TabSessionProvider } from '@/components/tab-session-provider';
 import { ToastContainer } from '@/lib/toast';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider>
+    <TabSessionProvider>
       {children}
       <ToastContainer />
-    </SessionProvider>
+    </TabSessionProvider>
   );
 }

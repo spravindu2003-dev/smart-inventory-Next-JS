@@ -1,18 +1,19 @@
 'use server';
 
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
 import { isValidCurrencyCode, DEFAULT_CURRENCY } from '@/lib/currencies';
 
-export async function getCurrency() {
-  const session = await auth();
-  if (!session?.user?.businessId) {
+export async function getCurrency(token: string) {
+  const session = await getAuthSession(token);
+
+  if (!session.businessId) {
     return { currency: DEFAULT_CURRENCY };
   }
 
   try {
     const business = await prisma.business.findUnique({
-      where: { id: session.user.businessId },
+      where: { id: session.businessId },
       select: { currency: true },
     });
     return { currency: business?.currency || DEFAULT_CURRENCY };
@@ -21,18 +22,15 @@ export async function getCurrency() {
   }
 }
 
-export async function updateCurrency(currencyCode: string) {
-  const session = await auth();
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function updateCurrency(token: string, currencyCode: string) {
+  const session = await getAuthSession(token);
 
-  const role = session.user.role;
+  const role = session.role;
   if (role !== 'owner' && role !== 'manager') {
     return { error: 'Only owners and managers can change currency settings' };
   }
 
-  if (!session.user.businessId) {
+  if (!session.businessId) {
     return { error: 'No business associated with this account' };
   }
 
@@ -42,7 +40,7 @@ export async function updateCurrency(currencyCode: string) {
 
   try {
     await prisma.business.update({
-      where: { id: session.user.businessId },
+      where: { id: session.businessId },
       data: { currency: currencyCode },
     });
 

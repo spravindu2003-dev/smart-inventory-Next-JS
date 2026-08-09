@@ -1,17 +1,12 @@
 'use server';
 
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
 import { serialize } from '@/lib/serialize';
 
-export async function getDashboardSummary() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getDashboardSummary(token: string) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const [
     totalProducts,
@@ -61,14 +56,9 @@ export async function getDashboardSummary() {
   };
 }
 
-export async function getMostSold() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getMostSold(token: string) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const products = await prisma.product.findMany({
     where: { businessId, removedAt: null },
@@ -98,14 +88,9 @@ export async function getMostSold() {
   return { products: productsWithSales };
 }
 
-export async function getLeastSold() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getLeastSold(token: string) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const products = await prisma.product.findMany({
     where: { businessId, removedAt: null },
@@ -135,14 +120,9 @@ export async function getLeastSold() {
   return { products: productsWithSales };
 }
 
-export async function getLowStock() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getLowStock(token: string) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const products = await prisma.product.findMany({
     where: {
@@ -156,14 +136,9 @@ export async function getLowStock() {
   return { products: serialize(products) };
 }
 
-export async function getDeadStock() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getDeadStock(token: string) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const products = await prisma.product.findMany({
     where: {
@@ -176,14 +151,9 @@ export async function getDeadStock() {
   return { products: serialize(products) };
 }
 
-export async function getSalesTrend(days: number = 30) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getSalesTrend(token: string, days: number = 30) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
@@ -219,14 +189,9 @@ export async function getSalesTrend(days: number = 30) {
   return { trend };
 }
 
-export async function getRevenueTrend(days: number = 30) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getRevenueTrend(token: string, days: number = 30) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
@@ -263,14 +228,9 @@ export async function getRevenueTrend(days: number = 30) {
   return { trend };
 }
 
-export async function getTopProducts(limit: number = 10) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getTopProducts(token: string, limit: number = 10) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const products = await prisma.product.findMany({
     where: { businessId, removedAt: null },
@@ -300,14 +260,9 @@ export async function getTopProducts(limit: number = 10) {
   return { products: productsWithSales.slice(0, limit) };
 }
 
-export async function getStockDistribution() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getStockDistribution(token: string) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const [inStock, lowStock, outOfStock, expired] = await Promise.all([
     prisma.product.count({
@@ -343,14 +298,9 @@ export async function getStockDistribution() {
   return { inStock, lowStock, outOfStock, expired };
 }
 
-export async function getCategoryDistribution() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getCategoryDistribution(token: string) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const categories = await prisma.product.groupBy({
     by: ['category'],
@@ -372,14 +322,9 @@ export async function getCategoryDistribution() {
   };
 }
 
-export async function getActivityDistribution() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getActivityDistribution(token: string) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const actions = await prisma.activityLog.groupBy({
     by: ['action'],
@@ -397,14 +342,9 @@ export async function getActivityDistribution() {
   };
 }
 
-export async function getQuickInsights() {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  const businessId = Number(session.user.businessId) || 0;
+export async function getQuickInsights(token: string) {
+  const session = await getAuthSession(token);
+  const businessId = Number(session.businessId) || 0;
 
   const [mostSold, lowStock, salesStats, revenueTrend] = await Promise.all([
     prisma.product.findMany({

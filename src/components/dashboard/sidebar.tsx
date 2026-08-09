@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
@@ -17,7 +17,7 @@ import {
   Menu,
   X,
 } from 'lucide-react';
-import { signOut } from '@/lib/auth';
+import { useTabSession } from '@/components/tab-session-provider';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -42,7 +42,14 @@ interface SidebarProps {
 
 export function Sidebar({ userRole, collapsed, onToggle, mobileOpen, onMobileClose, isDesktop }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useTabSession();
   const sidebarRef = React.useRef<HTMLDivElement>(null);
+
+  function handleSignOut() {
+    logout();
+    router.push('/login');
+  }
 
   const filteredNavigation = navigation.filter(
     (item) => !item.roles || item.roles.includes(userRole || '')
@@ -140,7 +147,7 @@ export function Sidebar({ userRole, collapsed, onToggle, mobileOpen, onMobileClo
           {/* Sign out */}
           <div className="p-3 border-t border-[#D0E7FF]">
             <button
-              onClick={() => signOut()}
+              onClick={handleSignOut}
               className="flex items-center gap-3 w-full rounded-lg px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-[#D0E7FF] hover:text-gray-900 transition-colors"
             >
               <LogOut className="h-5 w-5 shrink-0 text-gray-400" />
@@ -226,9 +233,9 @@ export function Sidebar({ userRole, collapsed, onToggle, mobileOpen, onMobileClo
 
       {/* Sign out */}
       <div className="p-3 border-t border-[#D0E7FF] shrink-0">
-        <button
-          onClick={() => signOut()}
-          title={collapsed ? 'Sign Out' : undefined}
+            <button
+              onClick={handleSignOut}
+              title={collapsed ? 'Sign Out' : undefined}
           className={cn(
             'flex items-center gap-3 w-full rounded-lg text-sm font-medium text-gray-600 hover:bg-[#D0E7FF] hover:text-gray-900 transition-colors',
             collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5'

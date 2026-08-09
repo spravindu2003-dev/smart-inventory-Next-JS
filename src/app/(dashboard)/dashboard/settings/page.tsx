@@ -5,12 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthToken } from '@/hooks/use-auth-token';
 import { updateProfile, changePassword } from '@/actions/auth';
 import { toast } from '@/lib/toast';
 import { CurrencySettings } from '@/components/dashboard/currency-settings';
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const token = useAuthToken();
 
   const [profileForm, setProfileForm] = React.useState({
     name: user?.name || '',
@@ -39,7 +41,7 @@ export default function SettingsPage() {
     setProfileSaving(true);
 
     try {
-      const result = await updateProfile(profileForm);
+      const result = await updateProfile(token, profileForm);
       if ('error' in result) {
         toast.error(result.error || 'An error occurred');
       } else {
@@ -63,7 +65,7 @@ export default function SettingsPage() {
     setPasswordSaving(true);
 
     try {
-      const result = await changePassword({
+      const result = await changePassword(token, {
         currentPassword: passwordForm.currentPassword,
         newPassword: passwordForm.newPassword,
       });

@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { getMostSold, getLeastSold, getLowStock, getDeadStock } from '@/actions/insights';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthToken } from '@/hooks/use-auth-token';
 import { TrendingUp, TrendingDown, AlertTriangle, Package } from 'lucide-react';
 import {
   BarChart,
@@ -19,6 +20,7 @@ import {
 
 export default function InsightsPage() {
   const { user } = useAuth();
+  const token = useAuthToken();
   const currency = user?.currency;
   const [mostSold, setMostSold] = React.useState<any[]>([]);
   const [leastSold, setLeastSold] = React.useState<any[]>([]);
@@ -30,10 +32,10 @@ export default function InsightsPage() {
     async function loadInsights() {
       try {
         const [mostSoldData, leastSoldData, lowStockData, deadStockData] = await Promise.all([
-          getMostSold(),
-          getLeastSold(),
-          getLowStock(),
-          getDeadStock(),
+          getMostSold(token),
+          getLeastSold(token),
+          getLowStock(token),
+          getDeadStock(token),
         ]);
 
         if ('products' in mostSoldData && mostSoldData.products) setMostSold(mostSoldData.products);

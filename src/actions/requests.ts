@@ -1,27 +1,24 @@
 'use server';
 
-import { auth } from '@/lib/auth';
+import { getAuthSession } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
 import { editRequestSchema } from '@/lib/validations';
 import { revalidatePath } from 'next/cache';
+import { triggerRequestEvent } from '@/lib/pusher';
 
-export async function getRequests(params?: { page?: number; limit?: number; status?: string }) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
+export async function getRequests(token: string, params?: { page?: number; limit?: number; status?: string }) {
+  const session = await getAuthSession(token);
 
   const page = params?.page || 1;
   const limit = params?.limit || 50;
   const skip = (page - 1) * limit;
 
-  const where: any = {
-    businessId: Number(session.user.businessId) || 0,
+  const where: Record<string, unknown> = {
+    businessId: Number(session.businessId) || 0,
   };
 
-  if (session.user.role === 'cashier') {
-    where.requestedById = Number(session.user.id);
+  if (session.role === 'cashier') {
+    where.requestedById = Number(session.id);
   }
 
   if (params?.status) {
@@ -57,20 +54,16 @@ export async function getRequests(params?: { page?: number; limit?: number; stat
   };
 }
 
-export async function getPendingRequestCount() {
-  const session = await auth();
+export async function getPendingRequestCount(token: string) {
+  const session = await getAuthSession(token);
 
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (session.user.role !== 'owner' && session.user.role !== 'manager') {
+  if (session.role !== 'owner' && session.role !== 'manager') {
     return { count: 0 };
   }
 
   const count = await prisma.editRequest.count({
     where: {
-      businessId: Number(session.user.businessId) || 0,
+      businessId: Number(session.businessId) || 0,
       status: 'PENDING',
     },
   });
@@ -78,18 +71,17 @@ export async function getPendingRequestCount() {
   return { count };
 }
 
-export async function createRequest(data: {
-  targetType: string;
-  targetId: number;
-  actionType: string;
-  payload: Record<string, unknown>;
-  message?: string;
-}) {
-  const session = await auth();
-
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
+export async function createRequest(
+  token: string,
+  data: {
+    targetType: string;
+    targetId: number;
+    actionType: string;
+    payload: Record<string, unknown>;
+    message?: string;
   }
+) {
+  const session = await getAuthSession(token);
 
   const validatedFields = editRequestSchema.safeParse(data);
 
@@ -104,10 +96,10 @@ export async function createRequest(data: {
       targetType,
       targetId,
       actionType,
-      payload: payload as any,
+      payload: payload as never,
       message,
-      businessId: Number(session.user.businessId) || 0,
-      requestedById: Number(session.user.id),
+      businessId: Number(session.businessId) || 0,
+      requestedById: Number(session.id),
     },
     include: {
       requestedBy: {
@@ -122,24 +114,26 @@ export async function createRequest(data: {
       entity: 'EditRequest',
       entityId: request.id,
       description: `Created ${actionType} request for ${targetType} #${targetId}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
   revalidatePath('/dashboard/requests');
 
+  try {
+    await triggerRequestEvent(Number(session.businessId), 'request-created', {
+      request: { id: request.id, actionType: request.actionType, targetType: request.targetType, targetId: request.targetId, status: request.status, createdAt: request.createdAt, requestedBy: request.requestedBy },
+    });
+  } catch { /* Pusher not configured */ }
+
   return { success: 'Request created', request };
 }
 
-export async function approveRequest(id: number) {
-  const session = await auth();
+export async function approveRequest(token: string, id: number) {
+  const session = await getAuthSession(token);
 
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (session.user.role !== 'owner' && session.user.role !== 'manager') {
+  if (session.role !== 'owner' && session.role !== 'manager') {
     return { error: 'Only owners and managers can approve requests' };
   }
 
@@ -151,11 +145,15 @@ export async function approveRequest(id: number) {
     return { error: 'Request not found' };
   }
 
+  if (request.businessId !== Number(session.businessId)) {
+    return { error: 'Unauthorized' };
+  }
+
   if (request.status !== 'PENDING') {
     return { error: 'Request already processed' };
   }
 
-  const payload = request.payload as Record<string, any>;
+  const payload = request.payload as Record<string, unknown>;
 
   await prisma.$transaction(async (tx) => {
     if (request.actionType === 'UPDATE_PRODUCT') {
@@ -171,8 +169,21 @@ export async function approveRequest(id: number) {
       await tx.product.update({
         where: { id: request.targetId },
         data: {
-          removalReason: payload.reason || null,
+          removalReason: (payload.reason as 'expired' | 'damaged' | 'low_demand' | null) || null,
           removedAt: new Date(),
+        },
+      });
+    } else if (request.actionType === 'CREATE_PRODUCT') {
+      await tx.product.create({
+        data: {
+          name: payload.name as string,
+          sku: payload.sku as string,
+          price: payload.price as number,
+          stock: (payload.stock as number) || 0,
+          category: payload.category as string | undefined,
+          description: payload.description as string | undefined,
+          expiryDate: payload.expiryDate ? new Date(payload.expiryDate as string) : null,
+          businessId: request.businessId,
         },
       });
     }
@@ -181,7 +192,7 @@ export async function approveRequest(id: number) {
       where: { id },
       data: {
         status: 'APPROVED',
-        reviewedById: Number(session.user.id),
+        reviewedById: Number(session.id),
       },
     });
   });
@@ -192,25 +203,27 @@ export async function approveRequest(id: number) {
       entity: 'EditRequest',
       entityId: id,
       description: `Approved ${request.actionType} request for ${request.targetType} #${request.targetId}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
   revalidatePath('/dashboard/requests');
   revalidatePath('/dashboard/products');
 
+  try {
+    await triggerRequestEvent(Number(session.businessId), 'request-approved', {
+      request: { id: request.id, actionType: request.actionType, targetType: request.targetType, targetId: request.targetId, status: 'APPROVED', requestedById: request.requestedById },
+    });
+  } catch { /* Pusher not configured */ }
+
   return { success: 'Request approved' };
 }
 
-export async function rejectRequest(id: number) {
-  const session = await auth();
+export async function rejectRequest(token: string, id: number, reason?: string) {
+  const session = await getAuthSession(token);
 
-  if (!session?.user) {
-    return { error: 'Unauthorized' };
-  }
-
-  if (session.user.role !== 'owner' && session.user.role !== 'manager') {
+  if (session.role !== 'owner' && session.role !== 'manager') {
     return { error: 'Only owners and managers can reject requests' };
   }
 
@@ -222,6 +235,10 @@ export async function rejectRequest(id: number) {
     return { error: 'Request not found' };
   }
 
+  if (request.businessId !== Number(session.businessId)) {
+    return { error: 'Unauthorized' };
+  }
+
   if (request.status !== 'PENDING') {
     return { error: 'Request already processed' };
   }
@@ -230,7 +247,7 @@ export async function rejectRequest(id: number) {
     where: { id },
     data: {
       status: 'REJECTED',
-      reviewedById: Number(session.user.id),
+      reviewedById: Number(session.id),
     },
   });
 
@@ -239,13 +256,19 @@ export async function rejectRequest(id: number) {
       action: 'REJECT_REQUEST',
       entity: 'EditRequest',
       entityId: id,
-      description: `Rejected ${request.actionType} request for ${request.targetType} #${request.targetId}`,
-      userId: Number(session.user.id),
-      businessId: Number(session.user.businessId) || 0,
+      description: `Rejected ${request.actionType} request for ${request.targetType} #${request.targetId}${reason ? `: ${reason}` : ''}`,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
     },
   });
 
   revalidatePath('/dashboard/requests');
+
+  try {
+    await triggerRequestEvent(Number(session.businessId), 'request-rejected', {
+      request: { id: request.id, actionType: request.actionType, targetType: request.targetType, targetId: request.targetId, status: 'REJECTED', requestedById: request.requestedById },
+    });
+  } catch { /* Pusher not configured */ }
 
   return { success: 'Request rejected' };
 }
