@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { productSchema, updateProductSchema } from '@/lib/validations';
 import { revalidatePath } from 'next/cache';
+import { serialize } from '@/lib/serialize';
 
 export async function getProducts(params?: { page?: number; limit?: number; filter?: string }) {
   const session = await auth();
@@ -37,7 +38,7 @@ export async function getProducts(params?: { page?: number; limit?: number; filt
   ]);
 
   return {
-    products,
+    products: serialize(products),
     pagination: {
       page,
       limit,
@@ -62,7 +63,7 @@ export async function getProduct(id: number) {
     return { error: 'Product not found' };
   }
 
-  return { product };
+  return { product: serialize(product) };
 }
 
 export async function createProduct(data: {
@@ -126,7 +127,7 @@ export async function createProduct(data: {
 
   revalidatePath('/dashboard/products');
 
-  return { success: 'Product created', product };
+  return { success: 'Product created', product: serialize(product) };
 }
 
 export async function updateProduct(
@@ -192,7 +193,7 @@ export async function updateProduct(
 
   revalidatePath('/dashboard/products');
 
-  return { success: 'Product updated', product };
+  return { success: 'Product updated', product: serialize(product) };
 }
 
 export async function deleteProduct(id: number) {
@@ -277,5 +278,5 @@ export async function removeProduct(id: number, reason?: string) {
 
   revalidatePath('/dashboard/products');
 
-  return { success: 'Product removed', product: removedProduct };
+  return { success: 'Product removed', product: serialize(removedProduct) };
 }

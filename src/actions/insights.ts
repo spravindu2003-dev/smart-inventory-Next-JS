@@ -2,6 +2,7 @@
 
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { serialize } from '@/lib/serialize';
 
 export async function getDashboardSummary() {
   const session = await auth();
@@ -18,7 +19,6 @@ export async function getDashboardSummary() {
     lowStockProducts,
     salesData,
     recentSales,
-    topProducts,
   ] = await Promise.all([
     prisma.product.count({
       where: { businessId, removedAt: null },
@@ -43,23 +43,11 @@ export async function getDashboardSummary() {
       where: { businessId },
       include: {
         user: {
-          select: { id: true, name: true, email: true },
-        },
-        items: {
-          include: {
-            product: {
-              select: { id: true, name: true, sku: true, price: true, stock: true },
-            },
-          },
+          select: { id: true, name: true },
         },
       },
       orderBy: { createdAt: 'desc' },
       take: 10,
-    }),
-    prisma.product.findMany({
-      where: { businessId, removedAt: null },
-      orderBy: { createdAt: 'desc' },
-      take: 5,
     }),
   ]);
 
@@ -69,8 +57,7 @@ export async function getDashboardSummary() {
     lowStockCount: lowStockProducts,
     totalRevenue: Number(salesData._sum.total) || 0,
     totalSales: salesData._count,
-    recentSales,
-    topProducts,
+    recentSales: serialize(recentSales),
   };
 }
 
@@ -85,7 +72,10 @@ export async function getMostSold() {
 
   const products = await prisma.product.findMany({
     where: { businessId, removedAt: null },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      sku: true,
       saleItems: {
         select: {
           quantity: true,
@@ -119,7 +109,10 @@ export async function getLeastSold() {
 
   const products = await prisma.product.findMany({
     where: { businessId, removedAt: null },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      sku: true,
       saleItems: {
         select: {
           quantity: true,
@@ -160,7 +153,7 @@ export async function getLowStock() {
     orderBy: { stock: 'asc' },
   });
 
-  return { products };
+  return { products: serialize(products) };
 }
 
 export async function getDeadStock() {
@@ -180,7 +173,7 @@ export async function getDeadStock() {
     },
   });
 
-  return { products };
+  return { products: serialize(products) };
 }
 
 export async function getSalesTrend(days: number = 30) {
@@ -281,7 +274,10 @@ export async function getTopProducts(limit: number = 10) {
 
   const products = await prisma.product.findMany({
     where: { businessId, removedAt: null },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      sku: true,
       saleItems: {
         select: {
           quantity: true,
@@ -413,7 +409,10 @@ export async function getQuickInsights() {
   const [mostSold, lowStock, salesStats, revenueTrend] = await Promise.all([
     prisma.product.findMany({
       where: { businessId, removedAt: null },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        sku: true,
         saleItems: {
           select: {
             quantity: true,
@@ -480,7 +479,7 @@ export async function getQuickInsights() {
 
   return {
     bestSeller,
-    lowStockAlerts: lowStock,
+    lowStockAlerts: serialize(lowStock),
     avgSaleValue: Number(salesStats._avg.total) || 0,
     revenueTrend: revenueTrendArray,
   };

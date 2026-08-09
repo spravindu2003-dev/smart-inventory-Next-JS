@@ -26,4 +26,5 @@ declare module 'lucide-react' {
   export const Filter: FC<SVGProps<SVGSVGElement> & { size?: number }>;
   export const Clock: FC<SVGProps<SVGSVGElement> & { size?: number }>;
   export const DollarSign: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Menu: FC<SVGProps<SVGSVGElement> & { size?: number }>;
 }

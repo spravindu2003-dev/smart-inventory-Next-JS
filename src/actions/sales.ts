@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { createSaleSchema, updateSaleSchema } from '@/lib/validations';
 import { revalidatePath } from 'next/cache';
+import { serialize } from '@/lib/serialize';
 
 export async function getSales(params?: { page?: number; limit?: number }) {
   const session = await auth();
@@ -43,7 +44,7 @@ export async function getSales(params?: { page?: number; limit?: number }) {
   ]);
 
   return {
-    sales,
+    sales: serialize(sales),
     pagination: {
       page,
       limit,
@@ -80,7 +81,7 @@ export async function getSale(id: number) {
     return { error: 'Sale not found' };
   }
 
-  return { sale };
+  return { sale: serialize(sale) };
 }
 
 export async function createSale(data: { items: { productId: number; quantity: number }[] }) {
@@ -185,7 +186,7 @@ export async function createSale(data: { items: { productId: number; quantity: n
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/products');
 
-  return { success: 'Sale created', sale };
+  return { success: 'Sale created', sale: serialize(sale) };
 }
 
 export async function updateSale(id: number, data: { items: { productId: number; quantity: number }[] }) {
@@ -318,7 +319,7 @@ export async function updateSale(id: number, data: { items: { productId: number;
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/products');
 
-  return { success: 'Sale updated', sale };
+  return { success: 'Sale updated', sale: serialize(sale) };
 }
 
 export async function undoSale(id: number) {
