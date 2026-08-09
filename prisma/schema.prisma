@@ -11,6 +11,7 @@ model Business {
   id           Int           @id @default(autoincrement())
   name         String
   ownerId      Int           @unique
+  currency     String        @default("LKR")
   createdAt    DateTime      @default(now())
   activities   ActivityLog[]
   owner        User          @relation("BusinessOwner", fields: [ownerId], references: [id])

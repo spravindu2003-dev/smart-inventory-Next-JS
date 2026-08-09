@@ -33,6 +33,7 @@ const removalOptions = [
 
 export default function ProductsPage() {
   const { user } = useAuth();
+  const currency = user?.currency;
   const isManager = user?.role === 'owner' || user?.role === 'manager';
 
   const [products, setProducts] = React.useState<any[]>([]);
@@ -244,7 +245,7 @@ export default function ProductsPage() {
                     )}
                     <div className="flex items-center gap-4 text-sm">
                       <span className="font-medium text-gray-900">
-                        {formatCurrency(Number(product.price))}
+                        {formatCurrency(Number(product.price), currency)}
                       </span>
                       <span className="text-gray-500">
                         Stock: {product.stock}

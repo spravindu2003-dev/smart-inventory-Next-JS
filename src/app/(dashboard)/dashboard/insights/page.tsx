@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getMostSold, getLeastSold, getLowStock, getDeadStock } from '@/actions/insights';
 import { formatCurrency } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
 import { TrendingUp, TrendingDown, AlertTriangle, Package } from 'lucide-react';
 import {
   BarChart,
@@ -17,6 +18,8 @@ import {
 } from 'recharts';
 
 export default function InsightsPage() {
+  const { user } = useAuth();
+  const currency = user?.currency;
   const [mostSold, setMostSold] = React.useState<any[]>([]);
   const [leastSold, setLeastSold] = React.useState<any[]>([]);
   const [lowStock, setLowStock] = React.useState<any[]>([]);
@@ -122,7 +125,7 @@ export default function InsightsPage() {
                         {product.totalSold} sold
                       </p>
                       <p className="text-xs text-gray-500">
-                        {formatCurrency(product.totalRevenue)}
+                        {formatCurrency(product.totalRevenue, currency)}
                       </p>
                     </div>
                   </div>

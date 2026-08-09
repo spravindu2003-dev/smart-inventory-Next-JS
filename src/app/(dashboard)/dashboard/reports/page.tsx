@@ -12,6 +12,7 @@ import {
   getQuickInsights,
 } from '@/actions/insights';
 import { formatCurrency } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
 import {
   LineChart,
   Line,
@@ -33,6 +34,8 @@ import {
 const COLORS = ['#4f46e5', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#06b6d4'];
 
 export default function ReportsPage() {
+  const { user } = useAuth();
+  const currency = user?.currency;
   const [salesTrend, setSalesTrend] = React.useState<any[]>([]);
   const [revenueTrend, setRevenueTrend] = React.useState<any[]>([]);
   const [topProducts, setTopProducts] = React.useState<any[]>([]);
@@ -115,7 +118,7 @@ export default function ReportsPage() {
             <CardContent className="p-4">
               <p className="text-sm text-gray-500">Avg Sale Value</p>
               <p className="text-lg font-bold text-gray-900">
-                {formatCurrency(quickInsights.avgSaleValue)}
+                {formatCurrency(quickInsights.avgSaleValue, currency)}
               </p>
             </CardContent>
           </Card>
@@ -141,7 +144,7 @@ export default function ReportsPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis />
-                <Tooltip formatter={(value: TooltipValueType | undefined) => formatCurrency(Number(value ?? 0))} />
+                <Tooltip formatter={(value: TooltipValueType | undefined) => formatCurrency(Number(value ?? 0), currency)} />
                 <Line
                   type="monotone"
                   dataKey="revenue"

@@ -17,6 +17,7 @@ import { toast } from '@/lib/toast';
 
 export default function SalesPage() {
   const { user } = useAuth();
+  const currency = user?.currency;
   const isManager = user?.role === 'owner' || user?.role === 'manager';
 
   const [sales, setSales] = React.useState<any[]>([]);
@@ -305,7 +306,7 @@ export default function SalesPage() {
                   <div className="flex items-center gap-4">
                     <div className="text-right">
                       <p className="text-lg font-bold text-gray-900">
-                        {formatCurrency(Number(sale.total))}
+                        {formatCurrency(Number(sale.total), currency)}
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -400,10 +401,10 @@ export default function SalesPage() {
                         <p className="font-medium text-gray-900">{item.productName}</p>
                         <p className="text-xs text-gray-500">{item.sku}</p>
                       </td>
-                      <td className="p-3 text-right text-sm">{formatCurrency(item.price)}</td>
+                      <td className="p-3 text-right text-sm">{formatCurrency(item.price, currency)}</td>
                       <td className="p-3 text-right text-sm">{item.quantity}</td>
                       <td className="p-3 text-right text-sm font-medium">
-                        {formatCurrency(item.price * item.quantity)}
+                        {formatCurrency(item.price * item.quantity, currency)}
                       </td>
                       <td className="p-3 text-right">
                         <Button
@@ -420,7 +421,7 @@ export default function SalesPage() {
               </table>
               <div className="p-3 bg-gray-50 flex justify-end">
                 <span className="font-bold text-gray-900">
-                  Total: {formatCurrency(cartTotal)}
+                  Total: {formatCurrency(cartTotal, currency)}
                 </span>
               </div>
             </div>
@@ -507,7 +508,7 @@ export default function SalesPage() {
                         <p className="font-medium text-gray-900">{item.productName}</p>
                         <p className="text-xs text-gray-500">{item.sku}</p>
                       </td>
-                      <td className="p-3 text-right text-sm">{formatCurrency(item.price)}</td>
+                      <td className="p-3 text-right text-sm">{formatCurrency(item.price, currency)}</td>
                       <td className="p-3 text-right">
                         <Input
                           type="number"
@@ -520,7 +521,7 @@ export default function SalesPage() {
                         />
                       </td>
                       <td className="p-3 text-right text-sm font-medium">
-                        {formatCurrency(item.price * item.quantity)}
+                        {formatCurrency(item.price * item.quantity, currency)}
                       </td>
                       <td className="p-3 text-right">
                         <Button
@@ -537,7 +538,7 @@ export default function SalesPage() {
               </table>
               <div className="p-3 bg-gray-50 flex justify-end">
                 <span className="font-bold text-gray-900">
-                  Total: {formatCurrency(editCartTotal)}
+                  Total: {formatCurrency(editCartTotal, currency)}
                 </span>
               </div>
             </div>

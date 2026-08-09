@@ -6,6 +6,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getDashboardSummary } from '@/actions/insights';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
 import { Package, ShoppingCart, DollarSign, TrendingUp } from 'lucide-react';
 import {
   LineChart,
@@ -18,6 +19,8 @@ import {
 } from 'recharts';
 
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const currency = user?.currency;
   const [summary, setSummary] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -81,7 +84,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Total Revenue"
-          value={formatCurrency(summary?.totalRevenue || 0)}
+          value={formatCurrency(summary?.totalRevenue || 0, currency)}
           icon={<DollarSign className="h-6 w-6" />}
         />
       </div>
@@ -107,7 +110,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-gray-900">
-                        {formatCurrency(Number(sale.total))}
+                        {formatCurrency(Number(sale.total), currency)}
                       </p>
                       <p className="text-xs text-gray-500">
                         {formatDate(sale.createdAt)}

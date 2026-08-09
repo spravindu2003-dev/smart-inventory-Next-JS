@@ -8,6 +8,7 @@ export interface SessionUser {
   email: string;
   role: Role;
   businessId: number | null;
+  currency?: string;
 }
 
 export interface UserWithBusiness {

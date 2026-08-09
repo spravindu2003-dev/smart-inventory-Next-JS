@@ -4,6 +4,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { loginSchema } from '@/lib/validations';
+import { DEFAULT_CURRENCY } from '@/lib/currencies';
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -31,6 +32,7 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email },
+          include: { business: { select: { currency: true } } },
         });
 
         if (!user || !user.isActive || user.isDeleted) {
@@ -49,6 +51,7 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           role: user.role,
           businessId: user.businessId,
+          currency: user.business?.currency || DEFAULT_CURRENCY,
         };
       },
     }),
@@ -57,9 +60,23 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = (user as any).role;
-        token.businessId = (user as any).businessId;
+        token.role = user.role;
+        token.businessId = user.businessId ?? null;
+        token.currency = user.currency ?? DEFAULT_CURRENCY;
       }
+
+      if (token.businessId && !token.currency) {
+        try {
+          const business = await prisma.business.findUnique({
+            where: { id: token.businessId as number },
+            select: { currency: true },
+          });
+          token.currency = business?.currency || DEFAULT_CURRENCY;
+        } catch {
+          token.currency = DEFAULT_CURRENCY;
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
@@ -67,6 +84,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
         session.user.businessId = token.businessId as number;
+        session.user.currency = (token.currency as string) || DEFAULT_CURRENCY;
       }
       return session;
     },
@@ -88,12 +106,14 @@ declare module 'next-auth' {
       email: string;
       role: string;
       businessId: number;
+      currency: string;
     };
   }
 
   interface User {
     role: string;
     businessId: number | null;
+    currency?: string;
   }
 }
 
@@ -102,5 +122,6 @@ declare module 'next-auth/jwt' {
     id: string;
     role: string;
     businessId: number | null;
+    currency?: string;
   }
 }

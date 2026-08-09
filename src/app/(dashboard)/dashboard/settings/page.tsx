@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { useAuth } from '@/hooks/use-auth';
 import { updateProfile, changePassword } from '@/actions/auth';
 import { toast } from '@/lib/toast';
+import { CurrencySettings } from '@/components/dashboard/currency-settings';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -88,7 +89,7 @@ export default function SettingsPage() {
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-500">Manage your account settings</p>
+        <p className="text-gray-500">Manage your account and application settings</p>
       </div>
 
       <Card>
@@ -123,6 +124,8 @@ export default function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      <CurrencySettings />
 
       <Card>
         <CardHeader>
