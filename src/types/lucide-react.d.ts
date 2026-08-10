@@ -35,4 +35,8 @@ declare module 'lucide-react' {
   export const Send: FC<SVGProps<SVGSVGElement> & { size?: number }>;
   export const ChevronDown: FC<SVGProps<SVGSVGElement> & { size?: number }>;
   export const ChevronRight: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const ChevronUp: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Download: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const RotateCcw: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const FileText: FC<SVGProps<SVGSVGElement> & { size?: number }>;
 }
