@@ -624,8 +624,8 @@ export default function ReportsPage() {
                     <YAxis yAxisId="revenue" tick={{ fontSize: 11 }} />
                     <YAxis yAxisId="count" orientation="right" tick={{ fontSize: 11 }} />
                     <Tooltip
-                      formatter={(value: TooltipValueType, name: string) =>
-                        name === 'revenue' ? formatCurrency(Number(value ?? 0), currency) : value
+                      formatter={(value: TooltipValueType | undefined, name: string | undefined) =>
+                        name === 'revenue' ? formatCurrency(Number(value ?? 0), currency) : String(value ?? '')
                       }
                     />
                     <Legend />
@@ -781,8 +781,8 @@ export default function ReportsPage() {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis type="number" tick={{ fontSize: 11 }} />
                       <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} />
-                      <Tooltip formatter={(value: TooltipValueType, name: string) =>
-                        name === 'totalRevenue' ? formatCurrency(Number(value ?? 0), currency) : value
+                      <Tooltip formatter={(value: TooltipValueType | undefined, name: string | undefined) =>
+                        name === 'totalRevenue' ? formatCurrency(Number(value ?? 0), currency) : String(value ?? '')
                       } />
                       <Legend />
                       <Bar dataKey="totalSold" fill="#4f46e5" radius={[0, 4, 4, 0]} name="Qty Sold" />
@@ -840,8 +840,8 @@ export default function ReportsPage() {
                       <XAxis dataKey="category" tick={{ fontSize: 11 }} />
                       <YAxis yAxisId="qty" />
                       <YAxis yAxisId="rev" orientation="right" />
-                      <Tooltip formatter={(value: TooltipValueType, name: string) =>
-                        name === 'revenue' ? formatCurrency(Number(value ?? 0), currency) : value
+                      <Tooltip formatter={(value: TooltipValueType | undefined, name: string | undefined) =>
+                        name === 'revenue' ? formatCurrency(Number(value ?? 0), currency) : String(value ?? '')
                       } />
                       <Legend />
                       <Bar yAxisId="qty" dataKey="quantity" fill="#4f46e5" radius={[4, 4, 0, 0]} name="Qty Sold" />
