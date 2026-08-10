@@ -21,7 +21,7 @@ const statusConfig: Record<string, { color: string; icon: React.ReactNode; label
 };
 
 const fieldLabels: Record<string, string> = {
-  name: 'Name', sku: 'SKU', price: 'Price', stock: 'Stock',
+  name: 'Product Name', sku: 'SKU', price: 'Selling Price', stock: 'Stock',
   category: 'Category', description: 'Description', expiryDate: 'Expiry Date',
 };
 

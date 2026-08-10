@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getProducts } from '@/actions/products';
+import { getProducts, updateProduct, deleteProduct } from '@/actions/products';
 import { createProductChangeRequest, getRequests } from '@/actions/requests';
 import { useAuth } from '@/hooks/use-auth';
 import { useAuthToken } from '@/hooks/use-auth-token';
@@ -59,6 +59,13 @@ export default function ProductsPage() {
   const [requestReason, setRequestReason] = React.useState('');
   const [submittingRequest, setSubmittingRequest] = React.useState(false);
   const [pendingRequests, setPendingRequests] = React.useState<Record<number, PendingRequest[]>>({});
+
+  const [editProduct, setEditProduct] = React.useState<any>(null);
+  const [editFields, setEditFields] = React.useState({ name: '', sku: '', price: '', stock: '', category: '', description: '', expiryDate: '' });
+  const [savingEdit, setSavingEdit] = React.useState(false);
+
+  const [deleteConfirm, setDeleteConfirm] = React.useState<any>(null);
+  const [deleting, setDeleting] = React.useState(false);
 
   async function fetchProducts() {
     try {
@@ -175,6 +182,73 @@ export default function ProductsPage() {
     }
   }
 
+  function openEditModal(product: any) {
+    setEditProduct(product);
+    setEditFields({
+      name: product.name || '',
+      sku: product.sku || '',
+      price: String(product.price ?? ''),
+      stock: String(product.stock ?? ''),
+      category: product.category || '',
+      description: product.description || '',
+      expiryDate: product.expiryDate ? String(product.expiryDate).slice(0, 10) : '',
+    });
+  }
+
+  async function handleSaveEdit() {
+    if (!editProduct) return;
+    setSavingEdit(true);
+    try {
+      const data: Record<string, unknown> = {};
+      if (editFields.name !== (editProduct.name || '')) data.name = editFields.name;
+      if (editFields.sku !== (editProduct.sku || '')) data.sku = editFields.sku;
+      if (editFields.price !== String(editProduct.price ?? '')) data.price = parseFloat(editFields.price);
+      if (editFields.stock !== String(editProduct.stock ?? '')) data.stock = parseInt(editFields.stock, 10);
+      if (editFields.category !== (editProduct.category || '')) data.category = editFields.category || undefined;
+      if (editFields.description !== (editProduct.description || '')) data.description = editFields.description || undefined;
+      const origExpiry = editProduct.expiryDate ? String(editProduct.expiryDate).slice(0, 10) : '';
+      if (editFields.expiryDate !== origExpiry) data.expiryDate = editFields.expiryDate || null;
+
+      if (Object.keys(data).length === 0) {
+        toast.info('No changes to save');
+        setEditProduct(null);
+        return;
+      }
+
+      const result = await updateProduct(token, editProduct.id, data);
+      if ('error' in result) {
+        toast.error(typeof result.error === 'string' ? result.error : 'Failed to update product');
+      } else {
+        toast.success('Product updated successfully');
+        setEditProduct(null);
+        fetchProducts();
+      }
+    } catch {
+      toast.error('Failed to update product');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleDeleteProduct() {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      const result = await deleteProduct(token, deleteConfirm.id);
+      if ('error' in result) {
+        toast.error(typeof result.error === 'string' ? result.error : 'Failed to delete product');
+      } else {
+        toast.success('Product deleted');
+        setDeleteConfirm(null);
+        fetchProducts();
+      }
+    } catch {
+      toast.error('Failed to delete product');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const filteredProducts = products.filter((product) => {
     if (search) {
       const q = search.toLowerCase();
@@ -264,11 +338,11 @@ export default function ProductsPage() {
                           </Button>
                         ) : (
                           <>
-                            <Button variant="ghost" size="icon" onClick={() => toast.info('Direct editing available for managers')}>
+                            <Button variant="ghost" size="icon" onClick={() => openEditModal(product)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
                             {isManager && (
-                              <Button variant="ghost" size="icon" onClick={() => toast.info('Direct deletion available for managers')}>
+                              <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(product)}>
                                 <Trash2 className="h-4 w-4 text-red-500" />
                               </Button>
                             )}
@@ -383,6 +457,69 @@ export default function ProductsPage() {
                 <Send className="h-4 w-4 mr-2" />
                 Submit Request
               </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+      {/* Edit Product Modal (Owner/Manager) */}
+      <Modal open={!!editProduct} onClose={() => setEditProduct(null)} title="Edit Product" className="max-w-xl">
+        {editProduct && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
+              <Input value={editFields.name} onChange={(e) => setEditFields({ ...editFields, name: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">SKU</label>
+                <Input value={editFields.sku} onChange={(e) => setEditFields({ ...editFields, sku: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                <Input value={editFields.category} onChange={(e) => setEditFields({ ...editFields, category: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Selling Price</label>
+                <Input type="number" step="0.01" value={editFields.price} onChange={(e) => setEditFields({ ...editFields, price: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Stock</label>
+                <Input type="number" value={editFields.stock} onChange={(e) => setEditFields({ ...editFields, stock: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+              <textarea
+                value={editFields.description}
+                onChange={(e) => setEditFields({ ...editFields, description: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[60px]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+              <Input type="date" value={editFields.expiryDate} onChange={(e) => setEditFields({ ...editFields, expiryDate: e.target.value })} />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setEditProduct(null)}>Cancel</Button>
+              <Button onClick={handleSaveEdit} loading={savingEdit}>Save Changes</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Product">
+        {deleteConfirm && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Are you sure you want to delete <strong>{deleteConfirm.name}</strong>?
+            </p>
+            <p className="text-sm text-red-600">This action cannot be undone.</p>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteProduct} loading={deleting}>Delete</Button>
             </div>
           </div>
         )}
