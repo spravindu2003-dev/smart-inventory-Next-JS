@@ -2,9 +2,31 @@
 
 import { getAuthSession } from '@/lib/server-auth';
 import { prisma } from '@/lib/prisma';
-import { editRequestSchema } from '@/lib/validations';
+import { productChangeRequestSchema, rejectRequestSchema } from '@/lib/validations';
+import { serialize } from '@/lib/serialize';
 import { revalidatePath } from 'next/cache';
 import { triggerRequestEvent } from '@/lib/pusher';
+
+const REQUEST_INCLUDE = {
+  requestedBy: {
+    select: { id: true, name: true, email: true, role: true },
+  },
+  reviewedBy: {
+    select: { id: true, name: true, email: true },
+  },
+} as const;
+
+function getProductFields(product: Record<string, unknown>) {
+  return {
+    name: product.name,
+    sku: product.sku,
+    price: Number(product.price),
+    stock: product.stock,
+    category: product.category,
+    description: product.description,
+    expiryDate: product.expiryDate,
+  };
+}
 
 export async function getRequests(token: string, params?: { page?: number; limit?: number; status?: string }) {
   const session = await getAuthSession(token);
@@ -29,12 +51,7 @@ export async function getRequests(token: string, params?: { page?: number; limit
     prisma.editRequest.findMany({
       where,
       include: {
-        requestedBy: {
-          select: { id: true, name: true, email: true },
-        },
-        reviewedBy: {
-          select: { id: true, name: true, email: true },
-        },
+        ...REQUEST_INCLUDE,
       },
       skip,
       take: limit,
@@ -43,8 +60,19 @@ export async function getRequests(token: string, params?: { page?: number; limit
     prisma.editRequest.count({ where }),
   ]);
 
+  const requestsWithProduct = await Promise.all(
+    requests.map(async (req) => {
+      let product = null;
+      if (req.targetType === 'product') {
+        const p = await prisma.product.findUnique({ where: { id: req.targetId } });
+        if (p) product = serialize(p);
+      }
+      return { ...req, product };
+    })
+  );
+
   return {
-    requests,
+    requests: serialize(requestsWithProduct),
     pagination: {
       page,
       limit,
@@ -57,18 +85,125 @@ export async function getRequests(token: string, params?: { page?: number; limit
 export async function getPendingRequestCount(token: string) {
   const session = await getAuthSession(token);
 
-  if (session.role !== 'owner' && session.role !== 'manager') {
-    return { count: 0 };
+  const where: Record<string, unknown> = {
+    businessId: Number(session.businessId) || 0,
+    status: 'PENDING',
+  };
+
+  if (session.role === 'cashier') {
+    where.requestedById = Number(session.id);
   }
 
-  const count = await prisma.editRequest.count({
+  const count = await prisma.editRequest.count({ where });
+
+  return { count };
+}
+
+export async function createProductChangeRequest(
+  token: string,
+  data: {
+    targetType: 'product';
+    targetId: number;
+    actionType: 'UPDATE_PRODUCT' | 'REMOVE_PRODUCT' | 'DELETE_PRODUCT';
+    changes: Record<string, unknown>;
+    reason: string;
+  }
+) {
+  const session = await getAuthSession(token);
+
+  if (session.role !== 'cashier') {
+    return { error: 'Only cashiers can submit product change requests' };
+  }
+
+  const validated = productChangeRequestSchema.safeParse(data);
+  if (!validated.success) {
+    return { error: 'Invalid request', details: validated.error.flatten().fieldErrors };
+  }
+
+  const { targetId, actionType, changes, reason } = validated.data;
+
+  const product = await prisma.product.findUnique({ where: { id: targetId } });
+  if (!product) {
+    return { error: 'Product not found' };
+  }
+
+  if (product.businessId !== Number(session.businessId)) {
+    return { error: 'Unauthorized' };
+  }
+
+  if (actionType !== 'DELETE_PRODUCT' && product.removedAt) {
+    return { error: 'Cannot modify a removed product' };
+  }
+
+  const existingPending = await prisma.editRequest.findFirst({
     where: {
       businessId: Number(session.businessId) || 0,
+      requestedById: Number(session.id),
+      targetId,
+      actionType,
       status: 'PENDING',
     },
   });
 
-  return { count };
+  if (existingPending) {
+    const existingPayload = existingPending.payload as Record<string, unknown>;
+    const sameChanges = Object.keys(changes).every(
+      (key) => JSON.stringify(changes[key]) === JSON.stringify(existingPayload[key])
+    );
+    if (sameChanges) {
+      return { error: 'You already have a pending request for this change' };
+    }
+  }
+
+  const productSnapshot = getProductFields(product as unknown as Record<string, unknown>);
+
+  const message = reason;
+
+  const request = await prisma.editRequest.create({
+    data: {
+      targetType: 'product',
+      targetId,
+      actionType,
+      payload: changes as never,
+      message,
+      productSnapshot: productSnapshot as never,
+      businessId: Number(session.businessId) || 0,
+      requestedById: Number(session.id),
+    },
+    include: REQUEST_INCLUDE,
+  });
+
+  await prisma.activityLog.create({
+    data: {
+      action: 'REQUEST_CREATED',
+      entity: 'EditRequest',
+      entityId: request.id,
+      description: `Created ${actionType.replace('_', ' ')} request for product "${product.name}"`,
+      userId: Number(session.id),
+      businessId: Number(session.businessId) || 0,
+    },
+  });
+
+  revalidatePath('/dashboard/requests');
+
+  try {
+    await triggerRequestEvent(Number(session.businessId), 'request-created', {
+      request: {
+        id: request.id,
+        actionType: request.actionType,
+        targetType: request.targetType,
+        targetId: request.targetId,
+        status: request.status,
+        message: request.message,
+        createdAt: request.createdAt,
+        requestedBy: request.requestedBy,
+        product: { name: product.name, price: Number(product.price), stock: product.stock, sku: product.sku },
+        changes,
+      },
+    });
+  } catch { /* Pusher not configured */ }
+
+  return { success: 'Change request submitted', request: serialize(request) };
 }
 
 export async function createRequest(
@@ -83,37 +218,29 @@ export async function createRequest(
 ) {
   const session = await getAuthSession(token);
 
-  const validatedFields = editRequestSchema.safeParse(data);
-
-  if (!validatedFields.success) {
-    return { error: 'Invalid fields', details: validatedFields.error.flatten().fieldErrors };
+  if (session.role === 'cashier') {
+    return { error: 'Cashiers must use the product change request workflow' };
   }
-
-  const { targetType, targetId, actionType, payload, message } = validatedFields.data;
 
   const request = await prisma.editRequest.create({
     data: {
-      targetType,
-      targetId,
-      actionType,
-      payload: payload as never,
-      message,
+      targetType: data.targetType,
+      targetId: data.targetId,
+      actionType: data.actionType,
+      payload: data.payload as never,
+      message: data.message,
       businessId: Number(session.businessId) || 0,
       requestedById: Number(session.id),
     },
-    include: {
-      requestedBy: {
-        select: { id: true, name: true, email: true },
-      },
-    },
+    include: REQUEST_INCLUDE,
   });
 
   await prisma.activityLog.create({
     data: {
-      action: 'CREATE_REQUEST',
+      action: 'REQUEST_CREATED',
       entity: 'EditRequest',
       entityId: request.id,
-      description: `Created ${actionType} request for ${targetType} #${targetId}`,
+      description: `Created ${data.actionType} request for ${data.targetType} #${data.targetId}`,
       userId: Number(session.id),
       businessId: Number(session.businessId) || 0,
     },
@@ -123,11 +250,19 @@ export async function createRequest(
 
   try {
     await triggerRequestEvent(Number(session.businessId), 'request-created', {
-      request: { id: request.id, actionType: request.actionType, targetType: request.targetType, targetId: request.targetId, status: request.status, createdAt: request.createdAt, requestedBy: request.requestedBy },
+      request: {
+        id: request.id,
+        actionType: request.actionType,
+        targetType: request.targetType,
+        targetId: request.targetId,
+        status: request.status,
+        createdAt: request.createdAt,
+        requestedBy: request.requestedBy,
+      },
     });
   } catch { /* Pusher not configured */ }
 
-  return { success: 'Request created', request };
+  return { success: 'Request created', request: serialize(request) };
 }
 
 export async function approveRequest(token: string, id: number) {
@@ -137,10 +272,7 @@ export async function approveRequest(token: string, id: number) {
     return { error: 'Only owners and managers can approve requests' };
   }
 
-  const request = await prisma.editRequest.findUnique({
-    where: { id },
-  });
-
+  const request = await prisma.editRequest.findUnique({ where: { id } });
   if (!request) {
     return { error: 'Request not found' };
   }
@@ -150,21 +282,52 @@ export async function approveRequest(token: string, id: number) {
   }
 
   if (request.status !== 'PENDING') {
-    return { error: 'Request already processed' };
+    return { error: 'This request has already been processed' };
   }
 
   const payload = request.payload as Record<string, unknown>;
+  const snapshot = request.productSnapshot as Record<string, unknown> | null;
+
+  if (request.actionType === 'UPDATE_PRODUCT' && snapshot) {
+    const currentProduct = await prisma.product.findUnique({ where: { id: request.targetId } });
+    if (!currentProduct) {
+      return { error: 'Product no longer exists' };
+    }
+
+    const currentSnapshot = getProductFields(currentProduct as unknown as Record<string, unknown>);
+    const conflicts: string[] = [];
+
+    for (const key of Object.keys(payload)) {
+      if (key === 'expiryDate') continue;
+      const originalVal = snapshot[key];
+      const currentVal = currentSnapshot[key as keyof typeof currentSnapshot];
+      if (JSON.stringify(originalVal) !== JSON.stringify(currentVal)) {
+        conflicts.push(key);
+      }
+    }
+
+    if (conflicts.length > 0) {
+      return {
+        error: 'This request conflicts with current product data. The product has been modified since this request was submitted.',
+        conflicts,
+      };
+    }
+  }
 
   await prisma.$transaction(async (tx) => {
     if (request.actionType === 'UPDATE_PRODUCT') {
+      const allowedFields: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(payload)) {
+        if (['name', 'sku', 'price', 'stock', 'category', 'description', 'expiryDate'].includes(key)) {
+          allowedFields[key] = key === 'expiryDate' && val ? new Date(val as string) : val;
+        }
+      }
       await tx.product.update({
         where: { id: request.targetId },
-        data: payload,
+        data: allowedFields,
       });
     } else if (request.actionType === 'DELETE_PRODUCT') {
-      await tx.product.delete({
-        where: { id: request.targetId },
-      });
+      await tx.product.delete({ where: { id: request.targetId } });
     } else if (request.actionType === 'REMOVE_PRODUCT') {
       await tx.product.update({
         where: { id: request.targetId },
@@ -193,27 +356,54 @@ export async function approveRequest(token: string, id: number) {
       data: {
         status: 'APPROVED',
         reviewedById: Number(session.id),
+        reviewedAt: new Date(),
       },
     });
   });
 
+  const product = request.targetType === 'product'
+    ? await prisma.product.findUnique({ where: { id: request.targetId } }).catch(() => null)
+    : null;
+
   await prisma.activityLog.create({
     data: {
-      action: 'APPROVE_REQUEST',
+      action: 'REQUEST_APPROVED',
       entity: 'EditRequest',
       entityId: id,
-      description: `Approved ${request.actionType} request for ${request.targetType} #${request.targetId}`,
+      description: `Approved ${request.actionType.replace('_', ' ')} request for ${request.targetType} #${request.targetId}`,
       userId: Number(session.id),
       businessId: Number(session.businessId) || 0,
     },
   });
+
+  if (request.actionType.includes('PRODUCT')) {
+    await prisma.activityLog.create({
+      data: {
+        action: 'PRODUCT_UPDATED_AFTER_APPROVAL',
+        entity: 'Product',
+        entityId: request.targetId,
+        description: `Product updated after request #${id} approval`,
+        userId: Number(session.id),
+        businessId: Number(session.businessId) || 0,
+      },
+    });
+  }
 
   revalidatePath('/dashboard/requests');
   revalidatePath('/dashboard/products');
 
   try {
     await triggerRequestEvent(Number(session.businessId), 'request-approved', {
-      request: { id: request.id, actionType: request.actionType, targetType: request.targetType, targetId: request.targetId, status: 'APPROVED', requestedById: request.requestedById },
+      request: {
+        id: request.id,
+        actionType: request.actionType,
+        targetType: request.targetType,
+        targetId: request.targetId,
+        status: 'APPROVED',
+        requestedById: request.requestedById,
+        reviewedBy: { id: session.id, name: session.name || 'Manager' },
+        product: product ? { name: product.name, price: Number(product.price), stock: product.stock } : null,
+      },
     });
   } catch { /* Pusher not configured */ }
 
@@ -227,10 +417,14 @@ export async function rejectRequest(token: string, id: number, reason?: string) 
     return { error: 'Only owners and managers can reject requests' };
   }
 
-  const request = await prisma.editRequest.findUnique({
-    where: { id },
-  });
+  if (!reason || reason.trim().length === 0) {
+    const validated = rejectRequestSchema.safeParse({ reason: reason || '' });
+    if (!validated.success) {
+      return { error: 'Rejection reason is required' };
+    }
+  }
 
+  const request = await prisma.editRequest.findUnique({ where: { id } });
   if (!request) {
     return { error: 'Request not found' };
   }
@@ -240,23 +434,25 @@ export async function rejectRequest(token: string, id: number, reason?: string) 
   }
 
   if (request.status !== 'PENDING') {
-    return { error: 'Request already processed' };
+    return { error: 'This request has already been processed' };
   }
 
   await prisma.editRequest.update({
     where: { id },
     data: {
       status: 'REJECTED',
+      rejectionReason: reason?.trim() || null,
       reviewedById: Number(session.id),
+      reviewedAt: new Date(),
     },
   });
 
   await prisma.activityLog.create({
     data: {
-      action: 'REJECT_REQUEST',
+      action: 'REQUEST_REJECTED',
       entity: 'EditRequest',
       entityId: id,
-      description: `Rejected ${request.actionType} request for ${request.targetType} #${request.targetId}${reason ? `: ${reason}` : ''}`,
+      description: `Rejected ${request.actionType.replace('_', ' ')} request for ${request.targetType} #${request.targetId}${reason ? `: ${reason}` : ''}`,
       userId: Number(session.id),
       businessId: Number(session.businessId) || 0,
     },
@@ -266,7 +462,16 @@ export async function rejectRequest(token: string, id: number, reason?: string) 
 
   try {
     await triggerRequestEvent(Number(session.businessId), 'request-rejected', {
-      request: { id: request.id, actionType: request.actionType, targetType: request.targetType, targetId: request.targetId, status: 'REJECTED', requestedById: request.requestedById },
+      request: {
+        id: request.id,
+        actionType: request.actionType,
+        targetType: request.targetType,
+        targetId: request.targetId,
+        status: 'REJECTED',
+        requestedById: request.requestedById,
+        rejectionReason: reason?.trim() || null,
+        reviewedBy: { id: session.id, name: session.name || 'Manager' },
+      },
     });
   } catch { /* Pusher not configured */ }
 

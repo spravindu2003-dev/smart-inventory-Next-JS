@@ -29,4 +29,10 @@ declare module 'lucide-react' {
   export const Menu: FC<SVGProps<SVGSVGElement> & { size?: number }>;
   export const RefreshCw: FC<SVGProps<SVGSVGElement> & { size?: number }>;
   export const AlertCircle: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const ArrowRight: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const User: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Calendar: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const Send: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const ChevronDown: FC<SVGProps<SVGSVGElement> & { size?: number }>;
+  export const ChevronRight: FC<SVGProps<SVGSVGElement> & { size?: number }>;
 }

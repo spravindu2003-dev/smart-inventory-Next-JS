@@ -75,6 +75,21 @@ export const editRequestSchema = z.object({
   message: z.string().optional(),
 });
 
+export const productChangeRequestSchema = z.object({
+  targetType: z.literal('product'),
+  targetId: z.number().int().positive(),
+  actionType: z.enum(['UPDATE_PRODUCT', 'REMOVE_PRODUCT', 'DELETE_PRODUCT']),
+  changes: z.record(z.string(), z.any()),
+  reason: z.string().min(1, 'Reason is required'),
+}).refine(
+  (data) => Object.keys(data.changes).length > 0,
+  { message: 'At least one change must be specified' }
+);
+
+export const rejectRequestSchema = z.object({
+  reason: z.string().min(1, 'Rejection reason is required'),
+});
+
 export const activityFilterSchema = z.object({
   action: z.string().optional(),
   userId: z.number().int().optional(),
@@ -96,3 +111,5 @@ export type UserInput = z.infer<typeof userSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type ProfileInput = z.infer<typeof profileSchema>;
 export type EditRequestInput = z.infer<typeof editRequestSchema>;
+export type ProductChangeRequestInput = z.infer<typeof productChangeRequestSchema>;
+export type RejectRequestInput = z.infer<typeof rejectRequestSchema>;

@@ -73,7 +73,7 @@ export async function createProduct(
   const session = await getAuthSession(token);
 
   if (session.role === 'cashier') {
-    return { error: 'Cashiers cannot create products directly. Please submit a request.' };
+    return { error: 'Cashiers cannot create products. Please ask a manager to create it.' };
   }
 
   const validatedFields = productSchema.safeParse(data);
@@ -136,61 +136,16 @@ export async function updateProduct(
 ) {
   const session = await getAuthSession(token);
 
-  const existingProduct = await prisma.product.findUnique({
-    where: { id },
-  });
+  if (session.role === 'cashier') {
+    return { error: 'Cashiers cannot update products directly. Please submit a change request.' };
+  }
 
+  const existingProduct = await prisma.product.findUnique({ where: { id } });
   if (!existingProduct) {
     return { error: 'Product not found' };
   }
 
-  if (session.role === 'cashier') {
-    const payload: Record<string, unknown> = {};
-    if (data.name !== undefined) payload.name = data.name;
-    if (data.sku !== undefined) payload.sku = data.sku;
-    if (data.price !== undefined) payload.price = data.price;
-    if (data.stock !== undefined) payload.stock = data.stock;
-    if (data.category !== undefined) payload.category = data.category;
-    if (data.description !== undefined) payload.description = data.description;
-    if (data.expiryDate !== undefined) payload.expiryDate = data.expiryDate;
-
-    if (Object.keys(payload).length === 0) {
-      return { error: 'No changes to request' };
-    }
-
-    const request = await prisma.editRequest.create({
-      data: {
-        targetType: 'product',
-        targetId: id,
-        actionType: 'UPDATE_PRODUCT',
-        payload: payload as never,
-        message: `Requested changes: ${Object.keys(payload).join(', ')}`,
-        businessId: Number(session.businessId) || 0,
-        requestedById: Number(session.id),
-      },
-      include: {
-        requestedBy: { select: { id: true, name: true, email: true } },
-      },
-    });
-
-    await prisma.activityLog.create({
-      data: {
-        action: 'CREATE_REQUEST',
-        entity: 'EditRequest',
-        entityId: request.id,
-        description: `Created update request for product #${id}`,
-        userId: Number(session.id),
-        businessId: Number(session.businessId) || 0,
-      },
-    });
-
-    revalidatePath('/dashboard/requests');
-
-    return { success: 'Edit request submitted for manager approval', request: true };
-  }
-
   const validatedFields = updateProductSchema.safeParse(data);
-
   if (!validatedFields.success) {
     return { error: 'Invalid fields', details: validatedFields.error.flatten().fieldErrors };
   }
@@ -221,21 +176,20 @@ export async function updateProduct(
 export async function deleteProduct(token: string, id: number) {
   const session = await getAuthSession(token);
 
+  if (session.role === 'cashier') {
+    return { error: 'Cashiers cannot delete products. Please submit a change request.' };
+  }
+
   if (session.role !== 'owner' && session.role !== 'manager') {
     return { error: 'Unauthorized' };
   }
 
-  const product = await prisma.product.findUnique({
-    where: { id },
-  });
-
+  const product = await prisma.product.findUnique({ where: { id } });
   if (!product) {
     return { error: 'Product not found' };
   }
 
-  await prisma.product.delete({
-    where: { id },
-  });
+  await prisma.product.delete({ where: { id } });
 
   await prisma.activityLog.create({
     data: {
@@ -256,44 +210,13 @@ export async function deleteProduct(token: string, id: number) {
 export async function removeProduct(token: string, id: number, reason?: string) {
   const session = await getAuthSession(token);
 
-  const product = await prisma.product.findUnique({
-    where: { id },
-  });
-
-  if (!product) {
-    return { error: 'Product not found' };
+  if (session.role === 'cashier') {
+    return { error: 'Cashiers cannot remove products directly. Please submit a change request.' };
   }
 
-  if (session.role === 'cashier') {
-    const request = await prisma.editRequest.create({
-      data: {
-        targetType: 'product',
-        targetId: id,
-        actionType: 'REMOVE_PRODUCT',
-        payload: { reason: reason || null },
-        message: `Requested product removal${reason ? `: ${reason}` : ''}`,
-        businessId: Number(session.businessId) || 0,
-        requestedById: Number(session.id),
-      },
-      include: {
-        requestedBy: { select: { id: true, name: true, email: true } },
-      },
-    });
-
-    await prisma.activityLog.create({
-      data: {
-        action: 'CREATE_REQUEST',
-        entity: 'EditRequest',
-        entityId: request.id,
-        description: `Created removal request for product #${id}`,
-        userId: Number(session.id),
-        businessId: Number(session.businessId) || 0,
-      },
-    });
-
-    revalidatePath('/dashboard/requests');
-
-    return { success: 'Removal request submitted for manager approval', request: true };
+  const product = await prisma.product.findUnique({ where: { id } });
+  if (!product) {
+    return { error: 'Product not found' };
   }
 
   const removedProduct = await prisma.product.update({

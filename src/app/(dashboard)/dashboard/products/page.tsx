@@ -3,27 +3,19 @@
 import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getProducts, createProduct, updateProduct, deleteProduct, removeProduct } from '@/actions/products';
+import { getProducts } from '@/actions/products';
+import { createProductChangeRequest, getRequests } from '@/actions/requests';
 import { useAuth } from '@/hooks/use-auth';
 import { useAuthToken } from '@/hooks/use-auth-token';
+import { usePusherChannel } from '@/hooks/use-pusher-channel';
 import { formatCurrency } from '@/lib/utils';
-import { Plus, Pencil, Trash2, Package, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Send, Clock, ArrowRight } from 'lucide-react';
 import { toast } from '@/lib/toast';
-
-const emptyForm = {
-  name: '',
-  sku: '',
-  price: '',
-  stock: '',
-  category: '',
-  description: '',
-  expiryDate: '',
-};
 
 const removalOptions = [
   { value: '', label: 'No reason' },
@@ -32,23 +24,41 @@ const removalOptions = [
   { value: 'low_demand', label: 'Low Demand' },
 ];
 
+const changeableFields = [
+  { key: 'name', label: 'Name', type: 'text' },
+  { key: 'sku', label: 'SKU', type: 'text' },
+  { key: 'price', label: 'Price', type: 'number' },
+  { key: 'stock', label: 'Stock', type: 'number' },
+  { key: 'category', label: 'Category', type: 'text' },
+  { key: 'description', label: 'Description', type: 'text' },
+  { key: 'expiryDate', label: 'Expiry Date', type: 'date' },
+];
+
+interface PendingRequest {
+  id: number;
+  status: string;
+  actionType: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 export default function ProductsPage() {
   const { user } = useAuth();
   const token = useAuthToken();
   const currency = user?.currency;
+  const isCashier = user?.role === 'cashier';
   const isManager = user?.role === 'owner' || user?.role === 'manager';
 
   const [products, setProducts] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [modalOpen, setModalOpen] = React.useState(false);
-  const [editing, setEditing] = React.useState<any>(null);
-  const [form, setForm] = React.useState(emptyForm);
-  const [saving, setSaving] = React.useState(false);
-  const [deleteTarget, setDeleteTarget] = React.useState<any>(null);
-  const [removalReason, setRemovalReason] = React.useState('');
-  const [deleting, setDeleting] = React.useState(false);
   const [filter, setFilter] = React.useState('all');
   const [search, setSearch] = React.useState('');
+
+  const [requestModalProduct, setRequestModalProduct] = React.useState<any>(null);
+  const [selectedFields, setSelectedFields] = React.useState<Record<string, string>>({});
+  const [requestReason, setRequestReason] = React.useState('');
+  const [submittingRequest, setSubmittingRequest] = React.useState(false);
+  const [pendingRequests, setPendingRequests] = React.useState<Record<number, PendingRequest[]>>({});
 
   async function fetchProducts() {
     try {
@@ -58,105 +68,117 @@ export default function ProductsPage() {
       } else {
         setProducts(data.products);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to load products');
     } finally {
       setLoading(false);
     }
   }
 
+  async function fetchPendingRequests() {
+    if (!isCashier || !token) return;
+    try {
+      const data = await getRequests(token, { status: 'PENDING' });
+      if ('requests' in data) {
+        const byProduct: Record<number, PendingRequest[]> = {};
+        for (const req of (data as any).requests) {
+          if (req.targetType === 'product') {
+            if (!byProduct[req.targetId]) byProduct[req.targetId] = [];
+            byProduct[req.targetId].push(req);
+          }
+        }
+        setPendingRequests(byProduct);
+      }
+    } catch { /* ignore */ }
+  }
+
   React.useEffect(() => {
     fetchProducts();
   }, [filter]);
 
-  function openCreate() {
-    setEditing(null);
-    setForm(emptyForm);
-    setModalOpen(true);
-  }
-
-  function openEdit(product: any) {
-    setEditing(product);
-    setForm({
-      name: product.name,
-      sku: product.sku,
-      price: String(product.price),
-      stock: String(product.stock),
-      category: product.category || '',
-      description: product.description || '',
-      expiryDate: product.expiryDate ? product.expiryDate.slice(0, 10) : '',
-    });
-    setModalOpen(true);
-  }
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-
-    try {
-      const payload = {
-        ...form,
-        price: parseFloat(form.price),
-        stock: parseInt(form.stock, 10) || 0,
-        expiryDate: form.expiryDate || null,
-      };
-
-      let result;
-      if (editing) {
-        result = await updateProduct(token, editing.id, payload);
-      } else {
-        result = await createProduct(token, payload);
-      }
-
-      if ('error' in result) {
-        toast.error(result.error || 'An error occurred');
-      } else {
-        toast.success(editing ? 'Product updated' : 'Product created');
-        setModalOpen(false);
-        setEditing(null);
-        setForm(emptyForm);
-        fetchProducts();
-      }
-    } catch (error) {
-      toast.error('Save failed');
-    } finally {
-      setSaving(false);
+  React.useEffect(() => {
+    if (isCashier && token) {
+      fetchPendingRequests();
     }
+  }, [isCashier, token]);
+
+  const channelName = user?.businessId ? `business-${user.businessId}` : '';
+  const handleRealtimeUpdate = React.useCallback(() => {
+    fetchProducts();
+    if (isCashier) fetchPendingRequests();
+  }, [token, filter, isCashier]);
+  usePusherChannel(channelName, 'request-approved', handleRealtimeUpdate);
+  usePusherChannel(channelName, 'request-rejected', handleRealtimeUpdate);
+
+  function openRequestModal(product: any) {
+    setRequestModalProduct(product);
+    setSelectedFields({});
+    setRequestReason('');
   }
 
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
-
-    try {
-      let result;
-      if (removalReason) {
-        result = await removeProduct(token, deleteTarget.id, removalReason);
+  function toggleField(key: string, value: string) {
+    setSelectedFields((prev) => {
+      const next = { ...prev };
+      if (next[key] === value) {
+        delete next[key];
       } else {
-        result = await deleteProduct(token, deleteTarget.id);
+        next[key] = value;
       }
+      return next;
+    });
+  }
+
+  async function handleSubmitRequest() {
+    if (!requestModalProduct || !requestReason.trim()) {
+      toast.error('Please provide a reason for the change');
+      return;
+    }
+    if (Object.keys(selectedFields).length === 0) {
+      toast.error('Please select at least one field to change');
+      return;
+    }
+
+    setSubmittingRequest(true);
+    try {
+      const changes: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(selectedFields)) {
+        if (key === 'price') {
+          changes[key] = parseFloat(val);
+        } else if (key === 'stock') {
+          changes[key] = parseInt(val, 10);
+        } else if (key === 'expiryDate') {
+          changes[key] = val || null;
+        } else {
+          changes[key] = val;
+        }
+      }
+
+      const result = await createProductChangeRequest(token, {
+        targetType: 'product',
+        targetId: requestModalProduct.id,
+        actionType: 'UPDATE_PRODUCT',
+        changes,
+        reason: requestReason.trim(),
+      });
 
       if ('error' in result) {
-        toast.error(result.error || 'An error occurred');
+        toast.error(result.error || 'Failed to submit request');
       } else {
-        toast.success('Product removed');
-        setDeleteTarget(null);
-        fetchProducts();
+        toast.success('Change request submitted for approval');
+        setRequestModalProduct(null);
+        fetchPendingRequests();
       }
-    } catch (error) {
-      toast.error('Delete failed');
+    } catch {
+      toast.error('Failed to submit request');
     } finally {
-      setDeleting(false);
+      setSubmittingRequest(false);
     }
   }
 
   const filteredProducts = products.filter((product) => {
     if (search) {
-      const searchLower = search.toLowerCase();
-      return (
-        product.name.toLowerCase().includes(searchLower) ||
-        product.sku.toLowerCase().includes(searchLower)
-      );
+      const q = search.toLowerCase();
+      return product.name.toLowerCase().includes(q) || product.sku.toLowerCase().includes(q);
     }
     return true;
   });
@@ -166,251 +188,204 @@ export default function ProductsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
-          <p className="text-gray-500">Manage your inventory products</p>
+          <p className="text-gray-500">
+            {isCashier ? 'Request changes to products' : 'Manage your inventory products'}
+          </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Product
-        </Button>
+        {isManager && (
+          <Button onClick={() => toast.info('Use the product cards to manage')}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Product
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Search products..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
+          <Input placeholder="Search products..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
         <div className="flex gap-2">
-          <Button
-            variant={filter === 'all' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilter('all')}
-          >
-            All
-          </Button>
-          <Button
-            variant={filter === 'active' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilter('active')}
-          >
-            Active
-          </Button>
-          <Button
-            variant={filter === 'removed' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilter('removed')}
-          >
-            Removed
-          </Button>
+          {['all', 'active', 'removed'].map((f) => (
+            <Button key={f} variant={filter === f ? 'default' : 'outline'} size="sm" onClick={() => setFilter(f)}>
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </Button>
+          ))}
         </div>
       </div>
 
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-48" />
-          ))}
+          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-48" />)}
         </div>
       ) : filteredProducts.length === 0 ? (
-        <EmptyState
-          title="No products found"
-          description="Get started by adding your first product"
-          action={
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
-            </Button>
-          }
-        />
+        <EmptyState title="No products found" description="Get started by adding your first product" />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredProducts.map((product) => (
-            <Card key={product.id} className="relative">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="font-semibold text-gray-900">{product.name}</h3>
-                      {product.removedAt && (
-                        <Badge variant="destructive">Removed</Badge>
+          {filteredProducts.map((product) => {
+            const pending = pendingRequests[product.id];
+            const hasPending = pending && pending.length > 0;
+            return (
+              <Card key={product.id} className="relative">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="font-semibold text-gray-900 truncate">{product.name}</h3>
+                        {product.removedAt && <Badge variant="destructive">Removed</Badge>}
+                        {hasPending && <Badge className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>}
+                      </div>
+                      <p className="text-sm text-gray-500 mb-1">SKU: {product.sku}</p>
+                      {product.category && <Badge variant="secondary" className="mb-2">{product.category}</Badge>}
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="font-medium text-gray-900">{formatCurrency(Number(product.price), currency)}</span>
+                        <span className="text-gray-500">Stock: {product.stock}</span>
+                      </div>
+                      {product.expiryDate && (
+                        <p className="text-xs text-gray-400 mt-2">Expires: {new Date(product.expiryDate).toLocaleDateString()}</p>
+                      )}
+                      {hasPending && isCashier && (
+                        <div className="mt-3 p-2 rounded-lg bg-yellow-50 border border-yellow-200">
+                          <p className="text-xs font-medium text-yellow-800 mb-1">Pending Changes:</p>
+                          {pending!.map((req) => (
+                            <p key={req.id} className="text-xs text-yellow-700">
+                              {Object.entries(req.payload).map(([k, v]) => `${k}: ${String(v)}`).join(', ')}
+                            </p>
+                          ))}
+                        </div>
                       )}
                     </div>
-                    <p className="text-sm text-gray-500 mb-1">SKU: {product.sku}</p>
-                    {product.category && (
-                      <Badge variant="secondary" className="mb-2">
-                        {product.category}
-                      </Badge>
-                    )}
-                    <div className="flex items-center gap-4 text-sm">
-                      <span className="font-medium text-gray-900">
-                        {formatCurrency(Number(product.price), currency)}
-                      </span>
-                      <span className="text-gray-500">
-                        Stock: {product.stock}
-                      </span>
-                    </div>
-                    {product.expiryDate && (
-                      <p className="text-xs text-gray-400 mt-2">
-                        Expires: {new Date(product.expiryDate).toLocaleDateString()}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex gap-1">
-                    {!product.removedAt && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => openEdit(product)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        {isManager && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteTarget(product)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
+                    <div className="flex gap-1 shrink-0 ml-2">
+                      {!product.removedAt && (
+                        isCashier ? (
+                          <Button variant="outline" size="sm" onClick={() => openRequestModal(product)} disabled={!!hasPending}>
+                            <Send className="h-4 w-4 mr-1" />
+                            Request
                           </Button>
-                        )}
-                      </>
-                    )}
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => toast.info('Direct editing available for managers')}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            {isManager && (
+                              <Button variant="ghost" size="icon" onClick={() => toast.info('Direct deletion available for managers')}>
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            )}
+                          </>
+                        )
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
-      {/* Create/Edit Modal */}
-      <Modal
-        open={modalOpen}
-        onClose={() => {
-          setModalOpen(false);
-          setEditing(null);
-          setForm(emptyForm);
-        }}
-        title={editing ? 'Edit Product' : 'Add Product'}
-      >
-        <form onSubmit={handleSave} className="space-y-4">
-          <Input
-            label="Name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            required
-          />
-          <Input
-            label="SKU"
-            value={form.sku}
-            onChange={(e) => setForm({ ...form, sku: e.target.value })}
-            required
-          />
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Price"
-              type="number"
-              step="0.01"
-              min="0"
-              value={form.price}
-              onChange={(e) => setForm({ ...form, price: e.target.value })}
-              required
-            />
-            <Input
-              label="Stock"
-              type="number"
-              min="0"
-              value={form.stock}
-              onChange={(e) => setForm({ ...form, stock: e.target.value })}
-              required
-            />
-          </div>
-          <Input
-            label="Category"
-            value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
-          />
-          <Input
-            label="Description"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-          />
-          <Input
-            label="Expiry Date"
-            type="date"
-            value={form.expiryDate}
-            onChange={(e) => setForm({ ...form, expiryDate: e.target.value })}
-          />
-          <div className="flex justify-end gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setModalOpen(false);
-                setEditing(null);
-                setForm(emptyForm);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" loading={saving}>
-              {editing ? 'Update' : 'Create'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      {/* Cashier Request Change Modal */}
+      <Modal open={!!requestModalProduct} onClose={() => setRequestModalProduct(null)} title="Request Product Change" className="max-w-xl">
+        {requestModalProduct && (
+          <div className="space-y-5">
+            <div className="p-3 rounded-lg bg-gray-50">
+              <p className="text-sm font-medium text-gray-900">{requestModalProduct.name}</p>
+              <p className="text-xs text-gray-500">SKU: {requestModalProduct.sku}</p>
+            </div>
 
-      {/* Delete Modal */}
-      <Modal
-        open={!!deleteTarget}
-        onClose={() => {
-          setDeleteTarget(null);
-          setRemovalReason('');
-        }}
-        title="Remove Product"
-        description="Are you sure you want to remove this product?"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Removal Reason (optional)
-            </label>
-            <select
-              value={removalReason}
-              onChange={(e) => setRemovalReason(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              {removalOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            {Object.keys(selectedFields).length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-700">Changes Preview</p>
+                <div className="rounded-lg border border-gray-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="text-left px-3 py-2 font-medium text-gray-600">Field</th>
+                        <th className="text-left px-3 py-2 font-medium text-gray-600">Current</th>
+                        <th className="px-3 py-2" />
+                        <th className="text-left px-3 py-2 font-medium text-gray-600">Proposed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(selectedFields).map(([key, newVal]) => {
+                        const field = changeableFields.find((f) => f.key === key);
+                        if (!field) return null;
+                        const currentVal = requestModalProduct[key] || '';
+                        return (
+                          <tr key={key} className="border-t border-gray-100">
+                            <td className="px-3 py-2 font-medium text-gray-700">{field.label}</td>
+                            <td className="px-3 py-2 text-gray-500">
+                              {key === 'price' ? formatCurrency(Number(currentVal), currency) : String(currentVal || '-')}
+                            </td>
+                            <td className="px-3 py-2 text-center text-gray-400"><ArrowRight className="h-3 w-3 inline" /></td>
+                            <td className="px-3 py-2 font-medium text-green-700">
+                              {key === 'price' ? formatCurrency(Number(newVal), currency) : String(newVal || '-')}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">Select fields to change</p>
+              <div className="space-y-2">
+                {changeableFields.map((field) => {
+                  const currentVal = requestModalProduct[field.key] || '';
+                  return (
+                    <div key={field.key} className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id={`field-${field.key}`}
+                        checked={field.key in selectedFields}
+                        onChange={() => {
+                          if (field.key in selectedFields) {
+                            toggleField(field.key, '');
+                          } else {
+                            const val = field.type === 'number' ? String(currentVal) : field.type === 'date' ? (currentVal ? String(currentVal).slice(0, 10) : '') : String(currentVal || '');
+                            toggleField(field.key, val);
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      <label htmlFor={`field-${field.key}`} className="text-sm text-gray-700 w-24">{field.label}</label>
+                      {field.key in selectedFields && (
+                        <Input
+                          type={field.type}
+                          value={selectedFields[field.key]}
+                          onChange={(e) => toggleField(field.key, e.target.value)}
+                          className="flex-1 h-9"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reason *</label>
+              <textarea
+                value={requestReason}
+                onChange={(e) => setRequestReason(e.target.value)}
+                placeholder="Why is this change needed?"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm min-h-[80px]"
+                required
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setRequestModalProduct(null)}>Cancel</Button>
+              <Button onClick={handleSubmitRequest} loading={submittingRequest} disabled={Object.keys(selectedFields).length === 0 || !requestReason.trim()}>
+                <Send className="h-4 w-4 mr-2" />
+                Submit Request
+              </Button>
+            </div>
           </div>
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDeleteTarget(null);
-                setRemovalReason('');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              loading={deleting}
-              onClick={handleDelete}
-            >
-              Remove
-            </Button>
-          </div>
-        </div>
+        )}
       </Modal>
     </div>
   );

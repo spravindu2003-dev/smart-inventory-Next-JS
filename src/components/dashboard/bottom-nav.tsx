@@ -23,7 +23,7 @@ const navigation = [
   { name: 'Reports', href: '/dashboard/reports', icon: BarChart3, roles: ['owner', 'manager'] },
   { name: 'Activity', href: '/dashboard/activities', icon: Activity, roles: ['owner', 'manager'] },
   { name: 'Users', href: '/dashboard/users', icon: Users, roles: ['owner'] },
-  { name: 'Requests', href: '/dashboard/requests', icon: ClipboardList, roles: ['owner', 'manager'] },
+  { name: 'Requests', href: '/dashboard/requests', icon: ClipboardList, roles: ['owner', 'manager', 'cashier'] },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
